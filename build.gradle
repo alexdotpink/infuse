@@ -1,0 +1,54 @@
+plugins {
+    id 'java'
+    id 'maven-publish'
+}
+
+group 'dev.fumaz'
+version '1.0.0'
+
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+compileJava {
+    options.compilerArgs += ["-parameters"]
+}
+
+jar {
+    archiveFileName = 'infuse.jar'
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            artifact("build/libs/infuse.jar") {
+                extension 'jar'
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name 'hexade'
+            url 'https://repo.hexade.net/repository/maven-releases/'
+
+            credentials {
+                username = project.hasProperty('hexadeUser') ? project.property("hexadeUser") : System.getenv("HEXADE_USR")
+                password = project.hasProperty('hexadePassword') ? project.property("hexadePassword") : System.getenv("HEXADE_PSW")
+            }
+        }
+    }
+}
