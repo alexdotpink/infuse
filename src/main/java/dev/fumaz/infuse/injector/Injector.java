@@ -14,11 +14,17 @@ import java.util.Set;
  */
 public interface Injector {
 
+    static Injector create(List<Module> modules) {
+        return new InfuseInjector(null, modules);
+    }
+
+    static Injector create(Module... modules) {
+        return create(Arrays.asList(modules));
+    }
+
     void inject(Object object);
 
     <T> T provide(Class<T> type, Context<?> context);
-
-    <T> T construct(Class<T> type, Context<?> context);
 
     <T> T construct(Class<T> type, Context<?> context, Object... args);
 

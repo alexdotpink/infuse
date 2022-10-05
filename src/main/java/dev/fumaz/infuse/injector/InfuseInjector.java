@@ -1,6 +1,8 @@
 package dev.fumaz.infuse.injector;
 
 import dev.fumaz.infuse.annotation.Inject;
+import dev.fumaz.infuse.annotation.PostConstruct;
+import dev.fumaz.infuse.annotation.PostInject;
 import dev.fumaz.infuse.bind.Binding;
 import dev.fumaz.infuse.context.Context;
 import dev.fumaz.infuse.module.Module;
@@ -10,6 +12,7 @@ import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -39,6 +42,18 @@ public class InfuseInjector implements Injector {
                 }
             }
         }
+
+        for (Method method : object.getClass().getDeclaredMethods()) {
+            if (method.isAnnotationPresent(PostInject.class)) {
+                method.setAccessible(true);
+
+                try {
+                    method.invoke(object);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
     }
 
     @Override
@@ -53,23 +68,6 @@ public class InfuseInjector implements Injector {
     }
 
     @Override
-    public <T> T construct(Class<T> type, Context<?> context) {
-        Constructor<T> constructor = findInjectableConstructor(type);
-
-        if (constructor == null) {
-            throw new RuntimeException("No injectable constructor found for " + type.getName());
-        }
-
-        constructor.setAccessible(true);
-
-        try {
-            return constructor.newInstance(getConstructorArguments(constructor, context));
-        } catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
     public <T> T construct(Class<T> type, Context<?> context, Object... args) {
         Constructor<T> constructor = findInjectableConstructor(type);
 
@@ -80,7 +78,16 @@ public class InfuseInjector implements Injector {
         constructor.setAccessible(true);
 
         try {
-            return constructor.newInstance(getConstructorArguments(constructor, context, args));
+            T t = constructor.newInstance(getConstructorArguments(constructor, context, args));
+
+            for (Method method : t.getClass().getDeclaredMethods()) {
+                if (method.isAnnotationPresent(PostConstruct.class)) {
+                    method.setAccessible(true);
+                    method.invoke(t);
+                }
+            }
+
+            return t;
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
         }
