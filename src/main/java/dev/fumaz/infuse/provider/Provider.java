@@ -15,7 +15,11 @@ public interface Provider<T> {
     }
 
     static <T> Provider<T> singleton(Class<T> type) {
-        return new SingletonProvider<>(type);
+        return new SingletonProvider<>(type, false);
+    }
+
+    static <T> Provider<T> eagerSingleton(Class<T> type) {
+        return new SingletonProvider<>(type, true);
     }
 
     T provide(Context<?> context);

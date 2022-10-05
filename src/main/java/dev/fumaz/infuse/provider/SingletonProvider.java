@@ -10,10 +10,12 @@ import dev.fumaz.infuse.context.Context;
 public class SingletonProvider<T> implements Provider<T> {
 
     private final Class<T> type;
+    private final boolean eager;
     private T instance;
 
-    public SingletonProvider(Class<T> type) {
+    public SingletonProvider(Class<T> type, boolean eager) {
         this.type = type;
+        this.eager = eager;
     }
 
     @Override
@@ -24,6 +26,10 @@ public class SingletonProvider<T> implements Provider<T> {
         }
 
         return instance;
+    }
+
+    public boolean isEager() {
+        return eager;
     }
 
     private void validate() {

@@ -33,6 +33,12 @@ public class BindingBuilder<T> {
         return build();
     }
 
+    public Binding<T> eagerSingleton() {
+        this.provider = Provider.eagerSingleton(type);
+
+        return build();
+    }
+
     public Binding<T> instance(T instance) {
         this.provider = Provider.instance(instance);
 

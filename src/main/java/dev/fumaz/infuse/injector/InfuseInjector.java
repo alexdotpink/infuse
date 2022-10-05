@@ -7,6 +7,7 @@ import dev.fumaz.infuse.bind.Binding;
 import dev.fumaz.infuse.context.Context;
 import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.Provider;
+import dev.fumaz.infuse.provider.SingletonProvider;
 
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
@@ -26,6 +27,20 @@ public class InfuseInjector implements Injector {
     public InfuseInjector(Injector parent, List<Module> modules) {
         this.parent = parent;
         this.modules = modules;
+
+        getBindings().forEach(binding -> {
+            if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
+                return;
+            }
+
+            SingletonProvider<?> provider = (SingletonProvider<?>) binding.getProvider();
+
+            if (!provider.isEager()) {
+                return;
+            }
+
+            provider.provide(new Context<>(getClass(), this, ElementType.FIELD, "eager", new Annotation[0]));
+        });
     }
 
     public void inject(Object object) {
