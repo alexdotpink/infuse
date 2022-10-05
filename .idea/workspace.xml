@@ -4,32 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/gradle.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/uiDesigner.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gradle/wrapper/gradle-wrapper.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gradle/wrapper/gradle-wrapper.properties" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gradlew" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gradlew.bat" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/settings.gradle" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/Inject.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/Singleton.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/bind/Binding.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/bind/BindingBuilder.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/context/Context.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/Injector.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/InfuseModule.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/Module.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/InstanceProvider.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/Provider.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/SingletonProvider.java" afterDir="false" />
+    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="initial commit">
+      <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -71,6 +47,7 @@
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
     "project.structure.last.edited": "Modules",
     "project.structure.proportion": "0.0",
     "project.structure.side.proportion": "0.0",
@@ -85,8 +62,16 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1664989611155</updated>
-      <workItem from="1664989613432" duration="6039000" />
+      <workItem from="1664989613432" duration="6339000" />
     </task>
+    <task id="LOCAL-00001" summary="initial commit">
+      <created>1664996219817</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1664996219817</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -102,5 +87,9 @@
         </entry>
       </map>
     </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="initial commit" />
+    <option name="LAST_COMMIT_MESSAGE" value="initial commit" />
   </component>
 </project>
