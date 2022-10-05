@@ -52,3 +52,7 @@ publishing {
         }
     }
 }
+
+tasks.withType(PublishToMavenRepository) {
+    dependsOn('jar')
+}
