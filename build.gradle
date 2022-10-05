@@ -43,7 +43,7 @@ publishing {
     repositories {
         maven {
             name 'fumaz'
-            url 'https://repo.fumaz.net/repository/maven-releases/'
+            url 'https://repo.fumaz.dev/repository/maven-releases/'
 
             credentials {
                 username = project.hasProperty('fumazUsername') ? project.property("fumazUsername") : System.getenv("REPOSITORY_USERNAME")
