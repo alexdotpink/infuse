@@ -116,7 +116,7 @@ public class InfuseInjector implements Injector {
         constructor.setAccessible(true);
 
         try {
-            T t = constructor.newInstance(getConstructorArguments(constructor, context, args));
+            T t = constructor.newInstance(getConstructorArguments(constructor, args));
 
             for (Method method : t.getClass().getDeclaredMethods()) {
                 if (method.isAnnotationPresent(PostConstruct.class)) {
