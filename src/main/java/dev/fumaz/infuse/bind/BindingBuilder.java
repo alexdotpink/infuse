@@ -1,6 +1,8 @@
 package dev.fumaz.infuse.bind;
 
 import dev.fumaz.infuse.provider.Provider;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Set;
 
@@ -11,41 +13,45 @@ import java.util.Set;
  */
 public class BindingBuilder<T> {
 
-    private final Class<T> type;
-    private final Set<Binding<?>> bindings;
+    private final @NotNull Class<T> type;
+    private final @NotNull Set<Binding<?>> bindings;
 
-    private Provider<T> provider;
+    private @Nullable Provider<T> provider;
 
-    public BindingBuilder(Class<T> type, Set<Binding<?>> bindings) {
+    public BindingBuilder(@NotNull Class<T> type, @NotNull Set<Binding<?>> bindings) {
         this.type = type;
         this.bindings = bindings;
     }
 
-    public Binding<T> to(Provider<T> provider) {
+    public Binding<T> toProvider(@NotNull Provider<T> provider) {
         this.provider = provider;
 
         return build();
     }
 
-    public Binding<T> singleton() {
+    public Binding<T> toSingleton() {
         this.provider = Provider.singleton(type);
 
         return build();
     }
 
-    public Binding<T> eagerSingleton() {
+    public Binding<T> toEagerSingleton() {
         this.provider = Provider.eagerSingleton(type);
 
         return build();
     }
 
-    public Binding<T> instance(T instance) {
+    public Binding<T> toInstance(@Nullable T instance) {
         this.provider = Provider.instance(instance);
 
         return build();
     }
 
     public Binding<T> build() {
+        if (provider == null) {
+            throw new IllegalStateException("No provider was set");
+        }
+
         Binding<T> binding = new Binding<>(type, provider);
         bindings.add(binding);
 

@@ -1,6 +1,7 @@
 package dev.fumaz.infuse.bind;
 
 import dev.fumaz.infuse.provider.Provider;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
@@ -11,19 +12,19 @@ import java.util.Objects;
  */
 public class Binding<T> {
 
-    private final Class<T> type;
-    private final Provider<T> provider;
+    private final @NotNull Class<T> type;
+    private final @NotNull Provider<T> provider;
 
-    public Binding(Class<T> type, Provider<T> provider) {
+    public Binding(@NotNull Class<T> type, @NotNull Provider<T> provider) {
         this.type = type;
         this.provider = provider;
     }
 
-    public Class<T> getType() {
+    public @NotNull Class<T> getType() {
         return type;
     }
 
-    public Provider<T> getProvider() {
+    public @NotNull Provider<T> getProvider() {
         return provider;
     }
 

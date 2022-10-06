@@ -8,6 +8,8 @@ import dev.fumaz.infuse.context.Context;
 import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.Provider;
 import dev.fumaz.infuse.provider.SingletonProvider;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
@@ -21,10 +23,10 @@ import java.util.Set;
 
 public class InfuseInjector implements Injector {
 
-    private final Injector parent;
-    private final List<Module> modules;
+    private final @Nullable Injector parent;
+    private final @NotNull List<Module> modules;
 
-    public InfuseInjector(Injector parent, List<Module> modules) {
+    public InfuseInjector(@Nullable Injector parent, @NotNull List<Module> modules) {
         this.parent = parent;
         this.modules = modules;
 
@@ -43,7 +45,7 @@ public class InfuseInjector implements Injector {
         });
     }
 
-    public void inject(Object object) {
+    public void inject(@NotNull Object object) {
         Set<Binding<?>> bindings = getBindings();
 
         for (Field field : object.getClass().getDeclaredFields()) {
@@ -72,7 +74,7 @@ public class InfuseInjector implements Injector {
     }
 
     @Override
-    public <T> T provide(Class<T> type, Context<?> context) {
+    public <T> T provide(@NotNull Class<T> type, @NotNull Context<?> context) {
         Binding<T> binding = getBindingOrNull(type);
 
         if (binding != null) {
@@ -83,7 +85,7 @@ public class InfuseInjector implements Injector {
     }
 
     @Override
-    public <T> T construct(Class<T> type, Context<?> context, Object... args) {
+    public <T> T construct(@NotNull Class<T> type, @NotNull Context<?> context, @NotNull Object... args) {
         Constructor<T> constructor = findInjectableConstructor(type);
 
         if (constructor == null) {
@@ -109,22 +111,22 @@ public class InfuseInjector implements Injector {
     }
 
     @Override
-    public <T> Provider<T> getProvider(Class<T> type) {
+    public <T> @Nullable Provider<T> getProvider(@NotNull Class<T> type) {
         return getBindingOrThrow(type).getProvider();
     }
 
     @Override
-    public Injector getParent() {
+    public @Nullable Injector getParent() {
         return parent;
     }
 
     @Override
-    public Injector child(List<Module> modules) {
+    public @NotNull Injector child(@NotNull List<Module> modules) {
         return new InfuseInjector(this, modules);
     }
 
     @Override
-    public List<Module> getModules() {
+    public @NotNull List<Module> getModules() {
         List<Module> modules = new ArrayList<>();
 
         if (parent != null) {
@@ -137,7 +139,7 @@ public class InfuseInjector implements Injector {
     }
 
     @Override
-    public Set<Binding<?>> getBindings() {
+    public @NotNull Set<Binding<?>> getBindings() {
         Set<Binding<?>> bindings = new HashSet<>();
 
         for (Module module : getModules()) {
@@ -150,21 +152,21 @@ public class InfuseInjector implements Injector {
         return bindings;
     }
 
-    public <T> Binding<T> getBindingOrThrow(Class<T> type) {
+    public <T> @NotNull Binding<T> getBindingOrThrow(@NotNull Class<T> type) {
         return (Binding<T>) getBindings().stream()
                 .filter(binding -> binding.getType().isAssignableFrom(type) || type.isAssignableFrom(binding.getType()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("No binding found for type " + type));
     }
 
-    public <T> Binding<T> getBindingOrNull(Class<T> type) {
+    public <T> @Nullable Binding<T> getBindingOrNull(@NotNull Class<T> type) {
         return (Binding<T>) getBindings().stream()
                 .filter(binding -> binding.getType().isAssignableFrom(type) || type.isAssignableFrom(binding.getType()))
                 .findFirst()
                 .orElse(null);
     }
 
-    private <T> Constructor<T> findInjectableConstructor(Class<T> type) {
+    private <T> @Nullable Constructor<T> findInjectableConstructor(@NotNull Class<T> type) {
         Constructor<T> injectableConstructor = null;
 
         for (Constructor<?> constructor : type.getDeclaredConstructors()) {
@@ -184,7 +186,7 @@ public class InfuseInjector implements Injector {
         return injectableConstructor;
     }
 
-    private Object[] getConstructorArguments(Constructor<?> constructor, Object... provided) {
+    private @NotNull Object[] getConstructorArguments(@NotNull Constructor<?> constructor, Object... provided) {
         Object[] args = new Object[constructor.getParameterCount()];
 
         for (int i = 0; i < args.length; i++) {

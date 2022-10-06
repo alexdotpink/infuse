@@ -4,7 +4,21 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="initial commit" />
+    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="initial commit">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/Singleton.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/Singleton.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/bind/Binding.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/bind/Binding.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/bind/BindingBuilder.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/bind/BindingBuilder.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/context/Context.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/context/Context.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/Injector.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/Injector.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/InfuseModule.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/InfuseModule.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/Module.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/Module.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/InstanceProvider.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/InstanceProvider.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/Provider.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/Provider.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/SingletonProvider.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/SingletonProvider.java" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -60,7 +74,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1664989611155</updated>
-      <workItem from="1664989613432" duration="7835000" />
+      <workItem from="1664989613432" duration="10546000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <created>1664996219817</created>

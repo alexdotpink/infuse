@@ -4,6 +4,8 @@ import dev.fumaz.infuse.bind.Binding;
 import dev.fumaz.infuse.context.Context;
 import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.Provider;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
@@ -14,31 +16,31 @@ import java.util.Set;
  */
 public interface Injector {
 
-    static Injector create(List<Module> modules) {
+    static @NotNull Injector create(@NotNull List<Module> modules) {
         return new InfuseInjector(null, modules);
     }
 
-    static Injector create(Module... modules) {
+    static @NotNull Injector create(@NotNull Module... modules) {
         return create(Arrays.asList(modules));
     }
 
-    void inject(Object object);
+    void inject(@NotNull Object object);
 
-    <T> T provide(Class<T> type, Context<?> context);
+    <T> @Nullable T provide(@NotNull Class<T> type, @NotNull Context<?> context);
 
-    <T> T construct(Class<T> type, Context<?> context, Object... args);
+    <T> @Nullable T construct(@NotNull Class<T> type, @NotNull Context<?> context, @NotNull Object... args);
 
-    <T> Provider<T> getProvider(Class<T> type);
+    <T> @Nullable Provider<T> getProvider(@NotNull Class<T> type);
 
-    List<Module> getModules();
+    @NotNull List<Module> getModules();
 
-    Set<Binding<?>> getBindings();
+    @NotNull Set<Binding<?>> getBindings();
 
-    Injector getParent();
+    @Nullable Injector getParent();
 
-    Injector child(List<Module> modules);
+    @NotNull Injector child(@NotNull List<Module> modules);
 
-    default Injector child(Module... modules) {
+    default @NotNull Injector child(@NotNull Module... modules) {
         return child(Arrays.asList(modules));
     }
 

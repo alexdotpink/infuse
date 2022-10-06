@@ -1,6 +1,7 @@
 package dev.fumaz.infuse.context;
 
 import dev.fumaz.infuse.injector.Injector;
+import org.jetbrains.annotations.NotNull;
 
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
@@ -12,13 +13,13 @@ import java.lang.annotation.ElementType;
  */
 public class Context<T> {
 
-    private final Class<T> type;
-    private final Injector injector;
-    private final ElementType element;
-    private final String name;
-    private final Annotation[] annotations;
+    private final @NotNull Class<T> type;
+    private final @NotNull Injector injector;
+    private final @NotNull ElementType element;
+    private final @NotNull String name;
+    private final @NotNull Annotation[] annotations;
 
-    public Context(Class<T> type, Injector injector, ElementType element, String name, Annotation[] annotations) {
+    public Context(@NotNull Class<T> type, @NotNull Injector injector, @NotNull ElementType element, @NotNull String name, Annotation[] annotations) {
         this.type = type;
         this.injector = injector;
         this.element = element;
@@ -26,19 +27,19 @@ public class Context<T> {
         this.annotations = annotations;
     }
 
-    public Class<T> getType() {
+    public @NotNull Class<T> getType() {
         return type;
     }
 
-    public Injector getInjector() {
+    public @NotNull Injector getInjector() {
         return injector;
     }
 
-    public ElementType getElement() {
+    public @NotNull ElementType getElement() {
         return element;
     }
 
-    public String getName() {
+    public @NotNull String getName() {
         return name;
     }
 
