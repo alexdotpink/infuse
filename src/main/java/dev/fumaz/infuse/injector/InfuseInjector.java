@@ -50,6 +50,20 @@ public class InfuseInjector implements Injector {
 
             provide(binding.getType(), new Context<>(getClass(), this, ElementType.FIELD, "eager", new Annotation[0]));
         });
+
+//        getBindings().forEach(binding -> {
+//            if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
+//                return;
+//            }
+//
+//            SingletonProvider<?> provider = (SingletonProvider<?>) binding.getProvider();
+//
+//            if (!provider.isEager()) {
+//                return;
+//            }
+//
+//            inject(provider.provide(new Context<>(getClass(), this, ElementType.FIELD, "eager", new Annotation[0])));
+//        });
     }
 
     public void inject(@NotNull Object object) {
@@ -110,6 +124,8 @@ public class InfuseInjector implements Injector {
                     method.invoke(t);
                 }
             }
+
+            inject(t);
 
             return t;
         } catch (ReflectiveOperationException e) {
@@ -214,16 +230,24 @@ public class InfuseInjector implements Injector {
     }
 
     private @NotNull Object[] getConstructorArguments(@NotNull Constructor<?> constructor, Object... provided) {
+        System.out.println("getting constructor arguments for " + constructor.getName() + " with " + provided.length + " provided arguments");
         Object[] args = new Object[constructor.getParameterCount()];
+        System.out.println("args length: " + args.length);
 
         for (int i = 0; i < args.length; i++) {
             Class<?> type = constructor.getParameterTypes()[i];
             Annotation[] annotations = constructor.getParameterAnnotations()[i];
 
+            System.out.println("getting constructor argument " + i + " of type " + type.getName());
+
             if (provided.length == 0 || provided.length <= i || constructor.getParameters()[i].isAnnotationPresent(Inject.class)) {
+                System.out.println("getting constructor argument " + i + " of type " + type.getName() + " from injector");
                 args[i] = provide(type, new Context<>(constructor.getDeclaringClass(), this, ElementType.CONSTRUCTOR, constructor.getParameters()[i].getName(), annotations));
+                System.out.println("got constructor argument " + i + " of instance " + args[i]);
             } else {
+                System.out.println("getting constructor argument " + i + " of type " + type.getName() + " from provided");
                 args[i] = provided[i];
+                System.out.println("got constructor argument " + i + " of instance " + args[i]);
             }
         }
 
