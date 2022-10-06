@@ -4,7 +4,7 @@ plugins {
 }
 
 group 'dev.fumaz'
-version '1.0.9'
+version '1.0.10'
 
 apply plugin: 'java'
 apply plugin: 'maven-publish'

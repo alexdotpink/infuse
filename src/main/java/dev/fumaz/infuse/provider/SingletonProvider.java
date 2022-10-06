@@ -1,6 +1,7 @@
 package dev.fumaz.infuse.provider;
 
 import dev.fumaz.infuse.context.Context;
+import dev.fumaz.infuse.injector.InfuseInjector;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -23,6 +24,15 @@ public class SingletonProvider<T> implements Provider<T> {
     public @NotNull T provide(Context<?> context) {
         if (instance == null) {
             instance = context.getInjector().construct(type, context);
+            validate();
+        }
+
+        return instance;
+    }
+
+    public @NotNull T provideWithoutInjecting(Context<?> context) {
+        if (instance == null) {
+            instance = ((InfuseInjector) context.getInjector()).constructWithoutInjecting(type, context);
             validate();
         }
 
