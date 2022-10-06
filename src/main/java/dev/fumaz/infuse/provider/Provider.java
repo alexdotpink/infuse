@@ -1,6 +1,7 @@
 package dev.fumaz.infuse.provider;
 
 import dev.fumaz.infuse.context.Context;
+import dev.fumaz.infuse.injector.Injector;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
