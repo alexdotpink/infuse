@@ -35,24 +35,19 @@ public class InfuseInjector implements Injector {
         this.parent = parent;
         this.modules = modules;
 
-        System.out.println("Creating injector with " + modules.size() + " modules");
+        modules.forEach(Module::configure);
 
         getBindings().forEach(binding -> {
-            System.out.println("Binding " + binding.getType().getSimpleName() + " to " + binding.getProvider().getClass().getSimpleName());
-
             if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
                 return;
             }
 
             SingletonProvider<?> provider = (SingletonProvider<?>) binding.getProvider();
 
-            System.out.println("Creating singleton instance of " + binding.getType().getSimpleName());
-
             if (!provider.isEager()) {
                 return;
             }
 
-            System.out.println("Eagerly creating singleton instance of " + binding.getType().getSimpleName());
             provide(binding.getType(), new Context<>(getClass(), this, ElementType.FIELD, "eager", new Annotation[0]));
         });
     }
