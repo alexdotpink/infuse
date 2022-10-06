@@ -40,6 +40,8 @@ public interface Injector {
 
     @NotNull Injector child(@NotNull List<Module> modules);
 
+    void destroy();
+
     default @NotNull Injector child(@NotNull Module... modules) {
         return child(Arrays.asList(modules));
     }

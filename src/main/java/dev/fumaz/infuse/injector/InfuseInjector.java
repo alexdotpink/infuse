@@ -3,6 +3,7 @@ package dev.fumaz.infuse.injector;
 import dev.fumaz.infuse.annotation.Inject;
 import dev.fumaz.infuse.annotation.PostConstruct;
 import dev.fumaz.infuse.annotation.PostInject;
+import dev.fumaz.infuse.annotation.PreDestroy;
 import dev.fumaz.infuse.bind.Binding;
 import dev.fumaz.infuse.context.Context;
 import dev.fumaz.infuse.module.Module;
@@ -15,6 +16,7 @@ import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -108,6 +110,23 @@ public class InfuseInjector implements Injector {
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public void destroy() {
+        getBindings().forEach(binding -> {
+            for (Method method : binding.getType().getDeclaredMethods()) {
+                if (!method.isAnnotationPresent(PreDestroy.class)) {
+                    return;
+                }
+
+                try {
+                    method.invoke(binding.getProvider().provide(new Context<>(binding.getType(), this, ElementType.METHOD, method.getName(), method.getAnnotations())));
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
     }
 
     @Override
