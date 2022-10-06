@@ -7,6 +7,7 @@ import dev.fumaz.infuse.annotation.PreDestroy;
 import dev.fumaz.infuse.bind.Binding;
 import dev.fumaz.infuse.context.Context;
 import dev.fumaz.infuse.module.Module;
+import dev.fumaz.infuse.provider.InstanceProvider;
 import dev.fumaz.infuse.provider.Provider;
 import dev.fumaz.infuse.provider.SingletonProvider;
 import org.jetbrains.annotations.NotNull;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.logging.Logger;
 
 public class InfuseInjector implements Injector {
 
@@ -160,6 +162,9 @@ public class InfuseInjector implements Injector {
     @Override
     public @NotNull Set<Binding<?>> getBindings() {
         Set<Binding<?>> bindings = new HashSet<>();
+
+        bindings.add(new Binding<>(Injector.class, new InstanceProvider<>(this)));
+        bindings.add(new Binding<>(Logger.class, (context) -> Logger.getLogger(context.getType().getSimpleName())));
 
         for (Module module : getModules()) {
             for (Binding<?> binding : module.getBindings()) {
