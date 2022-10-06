@@ -48,7 +48,7 @@ public class InfuseInjector implements Injector {
                 return;
             }
 
-            provide(binding.getType(), new Context<>(getClass(), this, ElementType.FIELD, "eager", new Annotation[0]));
+            provider.provideWithoutInjecting(new Context<>(getClass(), this, ElementType.FIELD, "eager", new Annotation[0]));
         });
 
         getBindings().forEach(binding -> {
