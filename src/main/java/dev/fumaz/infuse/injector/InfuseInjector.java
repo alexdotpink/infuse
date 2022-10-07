@@ -13,17 +13,13 @@ import dev.fumaz.infuse.provider.SingletonProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.awt.*;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.logging.Logger;
 
 public class InfuseInjector implements Injector {
@@ -69,7 +65,7 @@ public class InfuseInjector implements Injector {
     public void inject(@NotNull Object object) {
         Set<Binding<?>> bindings = getBindings();
 
-        for (Field field : object.getClass().getDeclaredFields()) {
+        for (Field field : getAllFields(object.getClass())) {
             if (field.isAnnotationPresent(Inject.class)) {
                 field.setAccessible(true);
 
@@ -81,7 +77,7 @@ public class InfuseInjector implements Injector {
             }
         }
 
-        for (Method method : object.getClass().getDeclaredMethods()) {
+        for (Method method : getAllMethods(object.getClass())) {
             if (method.isAnnotationPresent(PostInject.class)) {
                 method.setAccessible(true);
 
@@ -161,7 +157,7 @@ public class InfuseInjector implements Injector {
     @Override
     public void destroy() {
         getBindings().forEach(binding -> {
-            for (Method method : binding.getType().getDeclaredMethods()) {
+            for (Method method : getAllMethods(binding.getType())) {
                 if (!method.isAnnotationPresent(PreDestroy.class)) {
                     return;
                 }
@@ -269,6 +265,26 @@ public class InfuseInjector implements Injector {
         }
 
         return args;
+    }
+
+    private <T> List<Field> getAllFields(Class<T> type) {
+        List<Field> fields = new ArrayList<>(Arrays.asList(type.getDeclaredFields()));
+
+        if (type.getSuperclass() != null) {
+            fields.addAll(getAllFields(type.getSuperclass()));
+        }
+
+        return fields;
+    }
+
+    private <T> List<Method> getAllMethods(Class<T> type) {
+        List<Method> methods = new ArrayList<>(Arrays.asList(type.getDeclaredMethods()));
+
+        if (type.getSuperclass() != null) {
+            methods.addAll(getAllMethods(type.getSuperclass()));
+        }
+
+        return methods;
     }
 
 }
