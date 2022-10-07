@@ -35,7 +35,7 @@ public class InfuseInjector implements Injector {
 
         modules.forEach(Module::configure);
 
-        getBindings().forEach(binding -> {
+        getOwnBindings().forEach(binding -> {
             if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
                 return;
             }
@@ -49,7 +49,7 @@ public class InfuseInjector implements Injector {
             provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
         });
 
-        getBindings().forEach(binding -> {
+        getOwnBindings().forEach(binding -> {
             if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
                 return;
             }
@@ -222,6 +222,19 @@ public class InfuseInjector implements Injector {
         bindings.add(new Binding<>(Logger.class, (context) -> Logger.getLogger(context.getType().getSimpleName())));
 
         for (Module module : getModules()) {
+            for (Binding<?> binding : module.getBindings()) {
+                bindings.removeIf(binding::equals);
+                bindings.add(binding);
+            }
+        }
+
+        return bindings;
+    }
+
+    private List<Binding<?>> getOwnBindings() {
+        List<Binding<?>> bindings = new ArrayList<>();
+
+        for (Module module : modules) {
             for (Binding<?> binding : module.getBindings()) {
                 bindings.removeIf(binding::equals);
                 bindings.add(binding);
