@@ -63,7 +63,7 @@ public class InfuseInjector implements Injector {
     }
 
     public void inject(@NotNull Object object) {
-        Set<Binding<?>> bindings = getBindings();
+        List<Binding<?>> bindings = getBindings();
 
         for (Field field : getAllFields(object.getClass())) {
             if (field.isAnnotationPresent(Inject.class)) {
@@ -200,8 +200,8 @@ public class InfuseInjector implements Injector {
     }
 
     @Override
-    public @NotNull Set<Binding<?>> getBindings() {
-        Set<Binding<?>> bindings = new HashSet<>();
+    public @NotNull List<Binding<?>> getBindings() {
+        List<Binding<?>> bindings = new ArrayList<>();
 
         bindings.add(new Binding<>(Injector.class, new InstanceProvider<>(this)));
         bindings.add(new Binding<>(Logger.class, (context) -> Logger.getLogger(context.getType().getSimpleName())));

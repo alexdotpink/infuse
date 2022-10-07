@@ -6,15 +6,17 @@ import dev.fumaz.infuse.bind.BindingBuilder;
 import org.jetbrains.annotations.NotNull;
 import org.reflections.Reflections;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public abstract class InfuseModule implements Module {
 
-    private final Set<Binding<?>> bindings = new HashSet<>();
+    private final List<Binding<?>> bindings = new ArrayList<>();
 
     @Override
-    public @NotNull Set<Binding<?>> getBindings() {
+    public @NotNull List<Binding<?>> getBindings() {
         return bindings;
     }
 

@@ -4,6 +4,7 @@ import dev.fumaz.infuse.provider.Provider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.Set;
 
 /**
@@ -14,11 +15,11 @@ import java.util.Set;
 public class BindingBuilder<T> {
 
     private final @NotNull Class<T> type;
-    private final @NotNull Set<Binding<?>> bindings;
+    private final @NotNull Collection<Binding<?>> bindings;
 
     private @Nullable Provider<T> provider;
 
-    public BindingBuilder(@NotNull Class<T> type, @NotNull Set<Binding<?>> bindings) {
+    public BindingBuilder(@NotNull Class<T> type, @NotNull Collection<Binding<?>> bindings) {
         this.type = type;
         this.bindings = bindings;
     }

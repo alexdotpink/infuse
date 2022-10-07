@@ -34,7 +34,7 @@ public interface Injector {
 
     @NotNull List<Module> getModules();
 
-    @NotNull Set<Binding<?>> getBindings();
+    @NotNull List<Binding<?>> getBindings();
 
     @Nullable Injector getParent();
 

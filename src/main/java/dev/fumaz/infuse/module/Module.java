@@ -3,7 +3,7 @@ package dev.fumaz.infuse.module;
 import dev.fumaz.infuse.bind.Binding;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Set;
+import java.util.List;
 
 /**
  * A {@link Module} is a collection of bindings.
@@ -12,6 +12,6 @@ public interface Module {
 
     void configure();
 
-    @NotNull Set<Binding<?>> getBindings();
+    @NotNull List<Binding<?>> getBindings();
 
 }
