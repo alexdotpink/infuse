@@ -46,8 +46,6 @@ public class InfuseInjector implements Injector {
                 return;
             }
 
-            System.out.println("Eagerly initializing " + binding.getType().getSimpleName());
-
             provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
         });
 
@@ -62,8 +60,6 @@ public class InfuseInjector implements Injector {
                 return;
             }
 
-            System.out.println("Eagerly injecting " + binding.getType().getSimpleName());
-
             inject(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
         });
     }
@@ -76,7 +72,6 @@ public class InfuseInjector implements Injector {
                 field.setAccessible(true);
 
                 try {
-                    System.out.println("Injecting " + field.getName() + " into " + object.getClass().getSimpleName());
                     field.set(object, provide(field.getType(), new Context<>(object.getClass(), object, this, ElementType.FIELD, field.getName(), field.getAnnotations())));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
@@ -89,7 +84,6 @@ public class InfuseInjector implements Injector {
                 method.setAccessible(true);
 
                 try {
-                    System.out.println("Calling @PostInject method " + method.getName() + " on " + object.getClass().getSimpleName());
                     method.invoke(object);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
@@ -109,14 +103,12 @@ public class InfuseInjector implements Injector {
         Binding<T> binding = getBindingOrNull(type);
 
         if (binding != null) {
-            System.out.println("Providing " + type.getSimpleName() + " from binding");
             T t = binding.getProvider().provide(context);
             cache.remove(context.getObject().getClass());
 
             return t;
         }
 
-        System.out.println("Providing " + type.getSimpleName() + " from constructor");
         T t = construct(type, context);
         cache.remove(context.getObject().getClass());
 
@@ -134,19 +126,16 @@ public class InfuseInjector implements Injector {
         constructor.setAccessible(true);
 
         try {
-            System.out.println("Constructing " + type.getSimpleName() + " from constructor");
             T t = constructor.newInstance(getConstructorArguments(constructor, args));
 
             for (Method method : t.getClass().getDeclaredMethods()) {
                 if (method.isAnnotationPresent(PostConstruct.class)) {
-                    System.out.println("Calling @PostConstruct method " + method.getName() + " on " + t.getClass().getSimpleName());
 
                     method.setAccessible(true);
                     method.invoke(t);
                 }
             }
 
-            System.out.println("Injecting " + t.getClass().getSimpleName());
             inject(t);
 
             return t;
@@ -165,14 +154,10 @@ public class InfuseInjector implements Injector {
         constructor.setAccessible(true);
 
         try {
-            System.out.println("Constructing " + type.getSimpleName() + " from constructor");
-
             T t = constructor.newInstance(getConstructorArguments(constructor, args));
 
             for (Method method : t.getClass().getDeclaredMethods()) {
                 if (method.isAnnotationPresent(PostConstruct.class)) {
-                    System.out.println("Calling @PostConstruct method " + method.getName() + " on " + t.getClass().getSimpleName());
-
                     method.setAccessible(true);
                     method.invoke(t);
                 }
@@ -193,7 +178,6 @@ public class InfuseInjector implements Injector {
                 }
 
                 try {
-                    System.out.println("Calling @PreDestroy method " + method.getName() + " on " + binding.getType().getSimpleName());
                     method.invoke(binding.getProvider().provide(new Context<>(binding.getType(), this, this, ElementType.METHOD, method.getName(), method.getAnnotations())));
                 } catch (IllegalAccessException | InvocationTargetException e) {
                     throw new RuntimeException(e);
