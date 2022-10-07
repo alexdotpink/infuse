@@ -26,10 +26,12 @@ public class InfuseInjector implements Injector {
 
     private final @Nullable Injector parent;
     private final @NotNull List<Module> modules;
+    private final @NotNull Map<Class<?>, Object> cache;
 
     public InfuseInjector(@Nullable Injector parent, @NotNull List<Module> modules) {
         this.parent = parent;
         this.modules = modules;
+        this.cache = new HashMap<>();
 
         modules.forEach(Module::configure);
 
@@ -46,7 +48,7 @@ public class InfuseInjector implements Injector {
 
             System.out.println("Eagerly initializing " + binding.getType().getSimpleName());
 
-            provider.provideWithoutInjecting(new Context<>(getClass(), this, ElementType.FIELD, "eager", new Annotation[0]));
+            provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
         });
 
         getBindings().forEach(binding -> {
@@ -62,7 +64,7 @@ public class InfuseInjector implements Injector {
 
             System.out.println("Eagerly injecting " + binding.getType().getSimpleName());
 
-            inject(provider.provideWithoutInjecting(new Context<>(getClass(), this, ElementType.FIELD, "eager", new Annotation[0])));
+            inject(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
         });
     }
 
@@ -75,7 +77,7 @@ public class InfuseInjector implements Injector {
 
                 try {
                     System.out.println("Injecting " + field.getName() + " into " + object.getClass().getSimpleName());
-                    field.set(object, provide(field.getType(), new Context<>(object.getClass(), this, ElementType.FIELD, field.getName(), field.getAnnotations())));
+                    field.set(object, provide(field.getType(), new Context<>(object.getClass(), object, this, ElementType.FIELD, field.getName(), field.getAnnotations())));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
@@ -98,15 +100,27 @@ public class InfuseInjector implements Injector {
 
     @Override
     public <T> T provide(@NotNull Class<T> type, @NotNull Context<?> context) {
+        cache.put(context.getObject().getClass(), context.getObject());
+
+        if (cache.containsKey(type)) {
+            return (T) cache.get(type);
+        }
+
         Binding<T> binding = getBindingOrNull(type);
 
         if (binding != null) {
             System.out.println("Providing " + type.getSimpleName() + " from binding");
-            return binding.getProvider().provide(context);
+            T t = binding.getProvider().provide(context);
+            cache.remove(context.getObject().getClass());
+
+            return t;
         }
 
         System.out.println("Providing " + type.getSimpleName() + " from constructor");
-        return construct(type, context);
+        T t = construct(type, context);
+        cache.remove(context.getObject().getClass());
+
+        return t;
     }
 
     @Override
@@ -180,7 +194,7 @@ public class InfuseInjector implements Injector {
 
                 try {
                     System.out.println("Calling @PreDestroy method " + method.getName() + " on " + binding.getType().getSimpleName());
-                    method.invoke(binding.getProvider().provide(new Context<>(binding.getType(), this, ElementType.METHOD, method.getName(), method.getAnnotations())));
+                    method.invoke(binding.getProvider().provide(new Context<>(binding.getType(), this, this, ElementType.METHOD, method.getName(), method.getAnnotations())));
                 } catch (IllegalAccessException | InvocationTargetException e) {
                     throw new RuntimeException(e);
                 }
@@ -275,7 +289,7 @@ public class InfuseInjector implements Injector {
             Annotation[] annotations = constructor.getParameterAnnotations()[i];
 
             if (provided.length == 0 || provided.length <= i || constructor.getParameters()[i].isAnnotationPresent(Inject.class)) {
-                args[i] = provide(type, new Context<>(constructor.getDeclaringClass(), this, ElementType.CONSTRUCTOR, constructor.getParameters()[i].getName(), annotations));
+                args[i] = provide(type, new Context<>(constructor.getDeclaringClass(), this, this, ElementType.CONSTRUCTOR, constructor.getParameters()[i].getName(), annotations));
             } else {
                 args[i] = provided[i];
             }

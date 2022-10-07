@@ -14,13 +14,15 @@ import java.lang.annotation.ElementType;
 public class Context<T> {
 
     private final @NotNull Class<T> type;
+    private final @NotNull Object object;
     private final @NotNull Injector injector;
     private final @NotNull ElementType element;
     private final @NotNull String name;
     private final @NotNull Annotation[] annotations;
 
-    public Context(@NotNull Class<T> type, @NotNull Injector injector, @NotNull ElementType element, @NotNull String name, Annotation[] annotations) {
+    public Context(@NotNull Class<T> type, @NotNull Object object, @NotNull Injector injector, @NotNull ElementType element, @NotNull String name, Annotation[] annotations) {
         this.type = type;
+        this.object = object;
         this.injector = injector;
         this.element = element;
         this.name = name;
@@ -29,6 +31,10 @@ public class Context<T> {
 
     public @NotNull Class<T> getType() {
         return type;
+    }
+
+    public @NotNull Object getObject() {
+        return object;
     }
 
     public @NotNull Injector getInjector() {
