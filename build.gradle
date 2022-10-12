@@ -1,13 +1,15 @@
 plugins {
     id 'java'
     id 'maven-publish'
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
 }
 
 group 'dev.fumaz'
-version '1.0.17'
+version '1.0.18'
 
 apply plugin: 'java'
 apply plugin: 'maven-publish'
+apply plugin: 'com.github.johnrengelman.shadow'
 
 
 repositories {
@@ -57,5 +59,5 @@ publishing {
 }
 
 tasks.withType(PublishToMavenRepository) {
-    dependsOn('jar')
+    dependsOn('shadowJar')
 }
