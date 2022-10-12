@@ -5,7 +5,7 @@ plugins {
 }
 
 group 'dev.fumaz'
-version '1.0.18'
+version '1.0.19'
 
 apply plugin: 'java'
 apply plugin: 'maven-publish'
@@ -32,7 +32,7 @@ compileJava {
     options.compilerArgs += ["-parameters"]
 }
 
-jar {
+shadowJar {
     archiveFileName = 'infuse.jar'
 }
 
