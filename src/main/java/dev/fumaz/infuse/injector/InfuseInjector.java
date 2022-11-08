@@ -21,6 +21,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public class InfuseInjector implements Injector {
 
@@ -116,7 +117,30 @@ public class InfuseInjector implements Injector {
     }
 
     @Override
-    public <T> T construct(@NotNull Class<T> type, @NotNull Context<?> context, @NotNull Object... args) {
+    public <T> @Nullable T provide(@NotNull Class<T> type, @NotNull Object calling) {
+        cache.put(calling.getClass(), calling);
+
+        if (cache.containsKey(type)) {
+            return (T) cache.get(type);
+        }
+
+        Binding<T> binding = getBindingOrNull(type);
+
+        if (binding != null) {
+            T t = binding.getProvider().provide(this, calling);
+            cache.remove(calling.getClass());
+
+            return t;
+        }
+
+        T t = construct(type, calling);
+        cache.remove(calling.getClass());
+
+        return t;
+    }
+
+    @Override
+    public <T> T construct(@NotNull Class<T> type, @NotNull Object... args) {
         Constructor<T> constructor = findInjectableConstructor(type);
 
         if (constructor == null) {
@@ -130,7 +154,6 @@ public class InfuseInjector implements Injector {
 
             for (Method method : t.getClass().getDeclaredMethods()) {
                 if (method.isAnnotationPresent(PostConstruct.class)) {
-
                     method.setAccessible(true);
                     method.invoke(t);
                 }
@@ -144,7 +167,7 @@ public class InfuseInjector implements Injector {
         }
     }
 
-    public <T> T constructWithoutInjecting(@NotNull Class<T> type, @NotNull Context<?> context, @NotNull Object... args) {
+    public <T> T constructWithoutInjecting(@NotNull Class<T> type, @NotNull Object... args) {
         Constructor<T> constructor = findInjectableConstructor(type);
 
         if (constructor == null) {
@@ -229,6 +252,14 @@ public class InfuseInjector implements Injector {
         }
 
         return bindings;
+    }
+
+    @Override
+    public @NotNull <T> List<Binding<? extends T>> getBindings(Class<T> type) {
+        return getBindings().stream()
+                .filter(binding -> type.isAssignableFrom(binding.getType()))
+                .map(binding -> (Binding<? extends T>) binding)
+                .collect(Collectors.toList());
     }
 
     private List<Binding<?>> getOwnBindings() {

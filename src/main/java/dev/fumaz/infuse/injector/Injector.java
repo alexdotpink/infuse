@@ -9,7 +9,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 
 /**
  * An {@link Injector} is responsible for injecting dependencies into objects and providing instances of classes.
@@ -28,13 +27,17 @@ public interface Injector {
 
     <T> @Nullable T provide(@NotNull Class<T> type, @NotNull Context<?> context);
 
-    <T> @Nullable T construct(@NotNull Class<T> type, @NotNull Context<?> context, @NotNull Object... args);
+    <T> @Nullable T provide(@NotNull Class<T> type, @NotNull Object calling);
+
+    <T> @Nullable T construct(@NotNull Class<T> type, @NotNull Object... args);
 
     <T> @Nullable Provider<T> getProvider(@NotNull Class<T> type);
 
     @NotNull List<Module> getModules();
 
     @NotNull List<Binding<?>> getBindings();
+
+    @NotNull <T> List<Binding<? extends T>> getBindings(Class<T> type);
 
     @Nullable Injector getParent();
 
