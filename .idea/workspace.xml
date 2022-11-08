@@ -4,12 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="shadow jar file name">
+    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="debug">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/Injector.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/Injector.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/Provider.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/Provider.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/SingletonProvider.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/SingletonProvider.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -73,7 +72,7 @@
       <workItem from="1666957031375" duration="11000" />
       <workItem from="1667562107394" duration="283000" />
       <workItem from="1667562402270" duration="6000" />
-      <workItem from="1667919686824" duration="664000" />
+      <workItem from="1667919686824" duration="1745000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <created>1664996219817</created>
@@ -96,7 +95,21 @@
       <option name="project" value="LOCAL" />
       <updated>1665577026476</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="provide and construct without context!">
+      <created>1667920370520</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1667920370520</updated>
+    </task>
+    <task id="LOCAL-00005" summary="debug">
+      <created>1667924763883</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1667924763883</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -117,6 +130,8 @@
     <MESSAGE value="initial commit" />
     <MESSAGE value="shadow jar" />
     <MESSAGE value="shadow jar file name" />
-    <option name="LAST_COMMIT_MESSAGE" value="shadow jar file name" />
+    <MESSAGE value="provide and construct without context!" />
+    <MESSAGE value="debug" />
+    <option name="LAST_COMMIT_MESSAGE" value="debug" />
   </component>
 </project>

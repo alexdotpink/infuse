@@ -23,7 +23,7 @@ public class SingletonProvider<T> implements Provider<T> {
     @Override
     public @NotNull T provide(Context<?> context) {
         if (instance == null) {
-            instance = context.getInjector().construct(type, context);
+            instance = context.getInjector().construct(type);
             validate();
         }
 

@@ -110,7 +110,7 @@ public class InfuseInjector implements Injector {
             return t;
         }
 
-        T t = construct(type, context);
+        T t = construct(type);
         cache.remove(context.getObject().getClass());
 
         return t;
@@ -133,7 +133,7 @@ public class InfuseInjector implements Injector {
             return t;
         }
 
-        T t = construct(type, calling);
+        T t = construct(type);
         cache.remove(calling.getClass());
 
         return t;
@@ -168,10 +168,8 @@ public class InfuseInjector implements Injector {
     }
 
     public <T> T constructWithoutInjecting(@NotNull Class<T> type, @NotNull Object... args) {
-        System.out.println("constructWithoutInjecting "+ type + " args " + Arrays.toString(args));
         Constructor<T> constructor = findInjectableConstructor(type);
 
-        System.out.println("constructor " + constructor);
         if (constructor == null) {
             throw new RuntimeException("No injectable constructor found for " + type.getName());
         }
@@ -180,11 +178,9 @@ public class InfuseInjector implements Injector {
 
         try {
             T t = constructor.newInstance(getConstructorArguments(constructor, args));
-            System.out.println("instance " + t);
 
             for (Method method : t.getClass().getDeclaredMethods()) {
                 if (method.isAnnotationPresent(PostConstruct.class)) {
-                    System.out.println("post construct " + method);
                     method.setAccessible(true);
                     method.invoke(t);
                 }
