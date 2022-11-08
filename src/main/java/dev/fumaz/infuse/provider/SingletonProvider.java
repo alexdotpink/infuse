@@ -32,7 +32,7 @@ public class SingletonProvider<T> implements Provider<T> {
 
     public @NotNull T provideWithoutInjecting(Context<?> context) {
         if (instance == null) {
-            instance = ((InfuseInjector) context.getInjector()).constructWithoutInjecting(type, context);
+            instance = ((InfuseInjector) context.getInjector()).constructWithoutInjecting(type);
             validate();
         }
 
