@@ -4,11 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="debug">
+    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="dang it">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/SingletonProvider.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/SingletonProvider.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -32,6 +30,9 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="jar:///Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home/src.zip!/java/lang/reflect/Method.java" root0="SKIP_INSPECTION" />
+  </component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
   </component>
@@ -46,6 +47,7 @@
     &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
     &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
     &quot;dart.analysis.tool.window.visible&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
@@ -72,7 +74,15 @@
       <workItem from="1666957031375" duration="11000" />
       <workItem from="1667562107394" duration="283000" />
       <workItem from="1667562402270" duration="6000" />
-      <workItem from="1667919686824" duration="1745000" />
+      <workItem from="1667919686824" duration="2602000" />
+      <workItem from="1668158179004" duration="597000" />
+      <workItem from="1668195289569" duration="512000" />
+      <workItem from="1668236573798" duration="598000" />
+      <workItem from="1681143876821" duration="1349000" />
+      <workItem from="1681926422358" duration="615000" />
+      <workItem from="1682066538966" duration="598000" />
+      <workItem from="1682611610331" duration="600000" />
+      <workItem from="1683714557734" duration="907000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <created>1664996219817</created>
@@ -109,7 +119,21 @@
       <option name="project" value="LOCAL" />
       <updated>1667924763883</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="fix bug">
+      <created>1667925134293</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1667925134293</updated>
+    </task>
+    <task id="LOCAL-00007" summary="dang it">
+      <created>1667925381193</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1667925381193</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -132,6 +156,8 @@
     <MESSAGE value="shadow jar file name" />
     <MESSAGE value="provide and construct without context!" />
     <MESSAGE value="debug" />
-    <option name="LAST_COMMIT_MESSAGE" value="debug" />
+    <MESSAGE value="fix bug" />
+    <MESSAGE value="dang it" />
+    <option name="LAST_COMMIT_MESSAGE" value="dang it" />
   </component>
 </project>

@@ -141,10 +141,10 @@ public class InfuseInjector implements Injector {
 
     @Override
     public <T> T construct(@NotNull Class<T> type, @NotNull Object... args) {
-        Constructor<T> constructor = findInjectableConstructor(type);
+        Constructor<T> constructor = findSuitableConstructor(type, args);
 
         if (constructor == null) {
-            throw new RuntimeException("No injectable constructor found for " + type.getName());
+            throw new RuntimeException("No suitable constructor found for " + type.getName());
         }
 
         constructor.setAccessible(true);
@@ -168,7 +168,7 @@ public class InfuseInjector implements Injector {
     }
 
     public <T> T constructWithoutInjecting(@NotNull Class<T> type, @NotNull Object... args) {
-        Constructor<T> constructor = findInjectableConstructor(type);
+        Constructor<T> constructor = findSuitableConstructor(type, args);
 
         if (constructor == null) {
             throw new RuntimeException("No injectable constructor found for " + type.getName());
@@ -307,6 +307,64 @@ public class InfuseInjector implements Injector {
         }
 
         return injectableConstructor;
+    }
+
+    public <T> Constructor<T> findSuitableConstructor(Class<T> clazz, Object... args) {
+        Constructor<?>[] constructors = clazz.getDeclaredConstructors();
+        Constructor<T> bestMatch = null;
+        int bestMatchScore = Integer.MAX_VALUE;
+
+        for (Constructor<?> constructor : constructors) {
+            Class<?>[] parameterTypes = constructor.getParameterTypes();
+
+            if (parameterTypes.length != args.length) {
+                continue;
+            }
+
+            int matchScore = 0;
+            boolean suitable = true;
+
+            for (int i = 0; i < args.length; i++) {
+                Class<?> expectedType = parameterTypes[i];
+                Class<?> actualType = args[i].getClass();
+
+                if (expectedType.isAssignableFrom(actualType)) {
+                    int distance = getClassDistance(expectedType, actualType);
+                    if (distance != -1) {
+                        matchScore += distance;
+                    } else {
+                        suitable = false;
+                        break;
+                    }
+                } else {
+                    suitable = false;
+                    break;
+                }
+            }
+
+            if (suitable && matchScore < bestMatchScore) {
+                bestMatch = (Constructor<T>) constructor;
+                bestMatchScore = matchScore;
+            }
+        }
+
+        return bestMatch;
+    }
+
+    private int getClassDistance(Class<?> expected, Class<?> actual) {
+        if (expected.equals(actual)) {
+            return 0;
+        } else if (!expected.isAssignableFrom(actual)) {
+            return -1;
+        }
+
+        int distance = 0;
+        while (actual != null && !actual.equals(expected)) {
+            actual = actual.getSuperclass();
+            distance++;
+        }
+
+        return distance;
     }
 
     private @NotNull Object[] getConstructorArguments(@NotNull Constructor<?> constructor, Object... provided) {
