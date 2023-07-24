@@ -5,7 +5,7 @@ plugins {
 }
 
 group 'dev.fumaz'
-version '1.1.4'
+version '1.1.5'
 
 apply plugin: 'java'
 apply plugin: 'maven-publish'
@@ -22,6 +22,12 @@ dependencies {
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.0'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
+    }
 }
 
 test {
@@ -51,8 +57,8 @@ publishing {
             url 'https://repo.fumaz.dev/repository/maven-releases/'
 
             credentials {
-                username = project.hasProperty('fumazUsername') ? project.property("fumazUsername") : System.getenv("REPOSITORY_USERNAME")
-                password = project.hasProperty('fumazPassword') ? project.property("fumazPassword") : System.getenv("REPOSITORY_PASSWORD")
+                username = fumazUser
+                password = fumazPassword
             }
         }
     }
