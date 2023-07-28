@@ -326,6 +326,12 @@ public class InfuseInjector implements Injector {
 
             for (int i = 0; i < args.length; i++) {
                 Class<?> expectedType = parameterTypes[i];
+
+                if (args[i] == null) {
+                    matchScore += 0;
+                    continue;
+                }
+
                 Class<?> actualType = args[i].getClass();
 
                 if (expectedType.isAssignableFrom(actualType)) {
