@@ -61,36 +61,27 @@ public class InfuseInjector implements Injector {
                 return;
             }
 
-            inject(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
+            injectVariables(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
+        });
+
+        getOwnBindings().forEach(binding -> {
+            if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
+                return;
+            }
+
+            SingletonProvider<?> provider = (SingletonProvider<?>) binding.getProvider();
+
+            if (!provider.isEager()) {
+                return;
+            }
+
+            injectMethods(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
         });
     }
 
     public void inject(@NotNull Object object) {
-        List<Binding<?>> bindings = getBindings();
-
-        for (Field field : getAllFields(object.getClass())) {
-            if (field.isAnnotationPresent(Inject.class)) {
-                field.setAccessible(true);
-
-                try {
-                    field.set(object, provide(field.getType(), new Context<>(object.getClass(), object, this, ElementType.FIELD, field.getName(), field.getAnnotations())));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        }
-
-        for (Method method : getAllMethods(object.getClass())) {
-            if (method.isAnnotationPresent(PostInject.class)) {
-                method.setAccessible(true);
-
-                try {
-                    method.invoke(object);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        }
+        injectVariables(object);
+        injectMethods(object);
     }
 
     @Override
@@ -402,6 +393,36 @@ public class InfuseInjector implements Injector {
         }
 
         return methods;
+    }
+
+    private void injectVariables(Object object) {
+        List<Binding<?>> bindings = getBindings();
+
+        for (Field field : getAllFields(object.getClass())) {
+            if (field.isAnnotationPresent(Inject.class)) {
+                field.setAccessible(true);
+
+                try {
+                    field.set(object, provide(field.getType(), new Context<>(object.getClass(), object, this, ElementType.FIELD, field.getName(), field.getAnnotations())));
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+    }
+
+    private void injectMethods(Object object) {
+        for (Method method : getAllMethods(object.getClass())) {
+            if (method.isAnnotationPresent(PostInject.class)) {
+                method.setAccessible(true);
+
+                try {
+                    method.invoke(object);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
     }
 
 }
