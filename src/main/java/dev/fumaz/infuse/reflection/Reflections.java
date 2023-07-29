@@ -1,16 +1,17 @@
 package dev.fumaz.infuse.reflection;
 
-import com.google.common.collect.ImmutableSet;
-import com.google.common.reflect.ClassPath;
-
+import java.io.IOException;
 import java.lang.reflect.*;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Set;
+import java.net.URL;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-@SuppressWarnings({"UnstableApiUsage", "unchecked"})
+@SuppressWarnings({"unchecked"})
 public final class Reflections {
 
     private Reflections() {
@@ -18,37 +19,17 @@ public final class Reflections {
     }
 
     public static <T> T construct(Class<T> clazz, Object... parameters) {
-        try {
-            Class<?>[] parameterTypes = Arrays.stream(parameters)
-                    .map(Object::getClass)
-                    .toArray(Class<?>[]::new);
-
-            Constructor<T> constructor = Reflections.getSuitableConstructor(clazz, parameterTypes, parameters);
-
-            if (constructor == null) {
-                throw new NoSuchMethodException("Couldn't find constructor for given parameters");
-            }
-
-            constructor.setAccessible(true);
-            return constructor.newInstance(parameters);
-        } catch (InvocationTargetException | NoSuchMethodException e) {
-            throw new ReflectionException("Exception whilst fetching the method", e);
-        } catch (IllegalAccessException | InstantiationException e) {
-            throw new ReflectionException("Exception whilst instantiating the object", e);
-        }
+        return construct(clazz, Arrays.stream(parameters).map(Object::getClass).toArray(Class<?>[]::new), parameters);
     }
 
     public static <T> T construct(Class<T> clazz, Map<Class<?>, Object> arguments) {
+        return construct(clazz, arguments.keySet().toArray(new Class<?>[0]), arguments.values().toArray());
+    }
+
+    private static <T> T construct(Class<T> clazz, Class<?>[] parameterTypes, Object... parameters) {
         try {
-            Class<?>[] parameterTypes = arguments.keySet().toArray(new Class<?>[0]);
-            Object[] parameters = arguments.values().toArray();
-
-            Constructor<T> constructor = Reflections.getSuitableConstructor(clazz, parameterTypes, parameters);
-
-            if (constructor == null) {
-                throw new NoSuchMethodException("Couldn't find constructor for given parameters");
-            }
-
+            Constructor<T> constructor = getSuitableConstructor(clazz, parameterTypes);
+            checkConstructor(constructor);
             constructor.setAccessible(true);
             return constructor.newInstance(parameters);
         } catch (InvocationTargetException | NoSuchMethodException e) {
@@ -66,17 +47,51 @@ public final class Reflections {
         }
     }
 
-    public static Set<Class<?>> getClassesInPackage(ClassLoader classLoader, String pkg, boolean recursive) {
+    public static Set<Class<?>> getClassesInPackage(ClassLoader classLoader, String pkgName, boolean recursive) {
+        String path = pkgName.replace('.', '/');
+        Enumeration<URL> resources;
         try {
-            ClassPath path = ClassPath.from(classLoader);
-            ImmutableSet<ClassPath.ClassInfo> classes = recursive ? path.getTopLevelClassesRecursive(pkg) : path.getTopLevelClasses(pkg);
-
-            return classes.stream()
-                    .map(ClassPath.ClassInfo::load)
-                    .collect(Collectors.toSet());
-        } catch (Exception e) {
-            throw new ReflectionException("Exception whilst fetching classes", e);
+            resources = classLoader.getResources(path);
+        } catch (IOException e) {
+            throw new RuntimeException("Could not read package: " + pkgName, e);
         }
+        List<String> dirs = Collections.list(resources).stream().map(URL::getFile).collect(Collectors.toList());
+
+        Set<Class<?>> classes = new HashSet<>();
+        for (String directory : dirs) {
+            try {
+                classes.addAll(findClassesInPath(directory, pkgName, recursive));
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException("Could not get classes for package: " + pkgName, e);
+            }
+        }
+        return classes;
+    }
+
+    private static Set<Class<?>> findClassesInPath(String pkgPath, String packageName, boolean recursive)
+            throws ClassNotFoundException {
+        Path directory = Paths.get(pkgPath);
+        if (!Files.exists(directory)) {
+            return Collections.emptySet();
+        }
+
+        Set<Class<?>> classes = new HashSet<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
+            for (Path file : stream) {
+                if (recursive && Files.isDirectory(file)) {
+                    assert !Files.isSymbolicLink(file);
+                    classes.addAll(findClassesInPath(file.toString(), packageName + "." + file.getFileName(), recursive));
+                } else if (file.toString().endsWith(".class")) {
+                    String relativePath = directory.relativize(file).toString();
+                    String className = relativePath.substring(0, relativePath.lastIndexOf('.')).replace('/', '.');
+                    Class<?> clazz = Class.forName(packageName + "." + className);
+                    classes.add(clazz);
+                }
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(packageName + ": unable to read classes", e);
+        }
+        return classes;
     }
 
     public static <T> Set<Class<? extends T>> getMatchingClassesInPackage(ClassLoader classLoader, String pkg, Class<T> type, boolean recursive) {
@@ -187,33 +202,54 @@ public final class Reflections {
         invokeMethod(instance, method, arguments);
     }
 
-    private static <T> Constructor<T> getSuitableConstructor(Class<T> clazz, Class<?>[] parameterTypes, Object[] parameters) {
-        for (Constructor<?> declared : clazz.getDeclaredConstructors()) {
-            if (!checkParameters(declared, parameterTypes)) {
-                continue;
-            }
-
-            return (Constructor<T>) declared;
-        }
-
-        return null;
+    private static <T> Constructor<T> getSuitableConstructor(Class<T> clazz, Class<?>[] parameterTypes) throws NoSuchMethodException {
+        return (Constructor<T>) Arrays.stream(clazz.getDeclaredConstructors())
+                .filter(constructor -> checkParameters(constructor, parameterTypes))
+                .findFirst()
+                .orElseThrow(() -> new NoSuchMethodException("Couldn't find a suitable constructor for given parameters."));
     }
 
     private static boolean checkParameters(Executable executable, Class<?>[] parameterTypes) {
         Class<?>[] executableParameterTypes = executable.getParameterTypes();
 
-        // TODO: Add check for varargs
-        if (executableParameterTypes.length != parameterTypes.length) {
-            return false;
-        }
-
-        for (int i = 0; i < parameterTypes.length; i++) {
-            if (!parameterTypes[i].isAssignableFrom(executableParameterTypes[i])) {
+        if (executable.isVarArgs()) {
+            // Almost all parameters should match
+            if (executableParameterTypes.length - 1 > parameterTypes.length) {
                 return false;
+            }
+
+            for (int i = 0; i < executableParameterTypes.length - 1; i++) {
+                if (!parameterTypes[i].isAssignableFrom(executableParameterTypes[i])) {
+                    return false;
+                }
+            }
+
+            // The last parameter (varargs) should be an array that is assignable from the remaining parameterTypes
+            Class<?> varargsType = executableParameterTypes[executableParameterTypes.length - 1].getComponentType();
+            for (int i = executableParameterTypes.length - 1; i < parameterTypes.length; i++) {
+                if (!varargsType.isAssignableFrom(parameterTypes[i])) {
+                    return false;
+                }
+            }
+        } else {
+            if (executableParameterTypes.length != parameterTypes.length) {
+                return false;
+            }
+
+            for (int i = 0; i < parameterTypes.length; i++) {
+                if (!parameterTypes[i].isAssignableFrom(executableParameterTypes[i])) {
+                    return false;
+                }
             }
         }
 
         return true;
+    }
+
+    private static void checkConstructor(Constructor<?> constructor) throws NoSuchMethodException {
+        if (constructor == null) {
+            throw new NoSuchMethodException("Couldn't find constructor for given parameters");
+        }
     }
 
 }
