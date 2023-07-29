@@ -4,8 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="remove Reflections dependency">
-      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/InfuseModule.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/InfuseModule.java" afterDir="false" />
+    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="specify classloader">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -16,6 +16,18 @@
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
     </projectState>
+  </component>
+  <component name="ExternalProjectsManager">
+    <system id="GRADLE">
+      <state>
+        <projects_view>
+          <tree_state>
+            <expand />
+            <select />
+          </tree_state>
+        </projects_view>
+      </state>
+    </system>
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
@@ -100,7 +112,7 @@
       <workItem from="1685372312316" duration="17000" />
       <workItem from="1689105138852" duration="1040000" />
       <workItem from="1690203814903" duration="812000" />
-      <workItem from="1690546829375" duration="3341000" />
+      <workItem from="1690546829375" duration="4093000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <created>1664996219817</created>
@@ -206,7 +218,15 @@
       <option name="project" value="LOCAL" />
       <updated>1690633034289</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="specify classloader">
+      <option name="closed" value="true" />
+      <created>1690633355414</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1690633355414</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -238,6 +258,7 @@
     <MESSAGE value="inject InstanceProviders" />
     <MESSAGE value="accept null in construct" />
     <MESSAGE value="remove Reflections dependency" />
-    <option name="LAST_COMMIT_MESSAGE" value="remove Reflections dependency" />
+    <MESSAGE value="specify classloader" />
+    <option name="LAST_COMMIT_MESSAGE" value="specify classloader" />
   </component>
 </project>

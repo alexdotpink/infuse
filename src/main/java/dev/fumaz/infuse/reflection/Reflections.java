@@ -1,14 +1,19 @@
 package dev.fumaz.infuse.reflection;
 
+import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.*;
 import java.net.URL;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
 @SuppressWarnings({"unchecked"})
@@ -50,27 +55,37 @@ public final class Reflections {
     public static Set<Class<?>> getClassesInPackage(ClassLoader classLoader, String pkgName, boolean recursive) {
         String path = pkgName.replace('.', '/');
         Enumeration<URL> resources;
+
         try {
             resources = classLoader.getResources(path);
         } catch (IOException e) {
             throw new RuntimeException("Could not read package: " + pkgName, e);
         }
-        List<String> dirs = Collections.list(resources).stream().map(URL::getFile).collect(Collectors.toList());
 
         Set<Class<?>> classes = new HashSet<>();
-        for (String directory : dirs) {
+
+        while (resources.hasMoreElements()) {
+            URL resource = resources.nextElement();
+
             try {
-                classes.addAll(findClassesInPath(directory, pkgName, recursive));
-            } catch (ClassNotFoundException e) {
+                if (resource.getProtocol().equalsIgnoreCase("file")) {
+                    classes.addAll(findClassesInPath(new File(resource.toURI()).getAbsolutePath(), pkgName, recursive));
+                } else if (resource.getProtocol().equalsIgnoreCase("jar")) {
+                    String jarPath = resource.getPath().substring(5, resource.getPath().indexOf("!"));
+                    classes.addAll(findClassesInJar(jarPath, path, pkgName, recursive));
+                }
+            } catch (Exception e) {
                 throw new RuntimeException("Could not get classes for package: " + pkgName, e);
             }
         }
+
         return classes;
     }
 
     private static Set<Class<?>> findClassesInPath(String pkgPath, String packageName, boolean recursive)
             throws ClassNotFoundException {
         Path directory = Paths.get(pkgPath);
+
         if (!Files.exists(directory)) {
             return Collections.emptySet();
         }
@@ -84,14 +99,46 @@ public final class Reflections {
                 } else if (file.toString().endsWith(".class")) {
                     String relativePath = directory.relativize(file).toString();
                     String className = relativePath.substring(0, relativePath.lastIndexOf('.')).replace('/', '.');
-                    Class<?> clazz = Class.forName(packageName + "." + className);
-                    classes.add(clazz);
+
+                    try {
+                        Class<?> clazz = Class.forName(packageName + "." + className);
+                        classes.add(clazz);
+                    } catch (NoClassDefFoundError e) {
+                    }
                 }
             }
         } catch (IOException e) {
             throw new RuntimeException(packageName + ": unable to read classes", e);
         }
         return classes;
+    }
+
+    private static Set<Class<?>> findClassesInJar(String jarPath, String pkgPath, String packageName, boolean recursive)
+            throws ClassNotFoundException, IOException {
+        try (JarFile jarFile = new JarFile(URLDecoder.decode(jarPath, StandardCharsets.UTF_8.name()))) {
+            Set<Class<?>> classes = new HashSet<>();
+            Enumeration<JarEntry> entries = jarFile.entries();
+
+            while (entries.hasMoreElements()) {
+                JarEntry entry = entries.nextElement();
+                String entryName = entry.getName();
+                if (entryName.endsWith(".class") && entryName.startsWith(pkgPath) && entryName.length() > pkgPath.length()) {
+                    if (!recursive && entryName.lastIndexOf('/') > pkgPath.length()) {
+                        continue;
+                    }
+
+                    String className = entryName.replace('/', '.').substring(0, entryName.length() - ".class".length());
+
+                    try {
+                        Class<?> clazz = Class.forName(className);
+                        classes.add(clazz);
+                    } catch (NoClassDefFoundError e) {
+                    }
+                }
+            }
+
+            return classes;
+        }
     }
 
     public static <T> Set<Class<? extends T>> getMatchingClassesInPackage(ClassLoader classLoader, String pkg, Class<T> type, boolean recursive) {
