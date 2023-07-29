@@ -22,8 +22,8 @@ public abstract class InfuseModule implements Module {
         return new BindingBuilder<>(type, bindings);
     }
 
-    public void bindPackage(String name) {
-        Reflections.consume(getClass().getClassLoader(), name, true, type -> {
+    public void bindPackage(ClassLoader classLoader, String name) {
+        Reflections.consume(classLoader, name, true, type -> {
             if (type.isAnnotationPresent(Singleton.class)) {
                 if (type.getAnnotation(Singleton.class).lazy()) {
                     bind(type).toSingleton();

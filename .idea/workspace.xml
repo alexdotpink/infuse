@@ -4,12 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="accept null in construct">
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/reflection/ReflectionException.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/reflection/Reflections.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" afterDir="false" />
+    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="remove Reflections dependency">
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/InfuseModule.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/module/InfuseModule.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -56,7 +52,7 @@
     "WebServerToolWindowFactoryState": "false",
     "dart.analysis.tool.window.visible": "false",
     "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/alex/IdeaProjects/infuse/src/main/java/dev/fumaz/infuse",
+    "last_opened_file_path": "/Users/alex/IdeaProjects/infuse/src/main/java/dev/fumaz/infuse/reflection",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -71,6 +67,7 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/reflection" />
       <recent name="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse" />
     </key>
   </component>
@@ -103,7 +100,7 @@
       <workItem from="1685372312316" duration="17000" />
       <workItem from="1689105138852" duration="1040000" />
       <workItem from="1690203814903" duration="812000" />
-      <workItem from="1690546829375" duration="3039000" />
+      <workItem from="1690546829375" duration="3341000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <created>1664996219817</created>
@@ -193,7 +190,23 @@
       <option name="project" value="LOCAL" />
       <updated>1690556652592</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="remove Reflections dependency">
+      <option name="closed" value="true" />
+      <created>1690632987354</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1690632987354</updated>
+    </task>
+    <task id="LOCAL-00014" summary="remove Reflections dependency">
+      <option name="closed" value="true" />
+      <created>1690633034289</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1690633034289</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -224,6 +237,7 @@
     <MESSAGE value="inject variables first then methods" />
     <MESSAGE value="inject InstanceProviders" />
     <MESSAGE value="accept null in construct" />
-    <option name="LAST_COMMIT_MESSAGE" value="accept null in construct" />
+    <MESSAGE value="remove Reflections dependency" />
+    <option name="LAST_COMMIT_MESSAGE" value="remove Reflections dependency" />
   </component>
 </project>
