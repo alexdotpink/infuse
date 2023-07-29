@@ -329,22 +329,21 @@ public class InfuseInjector implements Injector {
 
                 if (args[i] == null) {
                     matchScore += 0;
-                    continue;
-                }
+                } else {
+                    Class<?> actualType = args[i].getClass();
 
-                Class<?> actualType = args[i].getClass();
-
-                if (expectedType.isAssignableFrom(actualType)) {
-                    int distance = getClassDistance(expectedType, actualType);
-                    if (distance != -1) {
-                        matchScore += distance;
+                    if (expectedType.isAssignableFrom(actualType)) {
+                        int distance = getClassDistance(expectedType, actualType);
+                        if (distance != -1) {
+                            matchScore += distance;
+                        } else {
+                            suitable = false;
+                            break;
+                        }
                     } else {
                         suitable = false;
                         break;
                     }
-                } else {
-                    suitable = false;
-                    break;
                 }
             }
 

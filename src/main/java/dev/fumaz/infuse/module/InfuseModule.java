@@ -3,13 +3,11 @@ package dev.fumaz.infuse.module;
 import dev.fumaz.infuse.annotation.Singleton;
 import dev.fumaz.infuse.bind.Binding;
 import dev.fumaz.infuse.bind.BindingBuilder;
+import dev.fumaz.infuse.reflection.Reflections;
 import org.jetbrains.annotations.NotNull;
-import org.reflections.Reflections;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 public abstract class InfuseModule implements Module {
 
@@ -25,13 +23,13 @@ public abstract class InfuseModule implements Module {
     }
 
     public void bindPackage(String name) {
-        Reflections reflections = new Reflections(name);
-
-        reflections.getTypesAnnotatedWith(Singleton.class).forEach(type -> {
-            if (type.getAnnotation(Singleton.class).lazy()) {
-                bind(type).toSingleton();
-            } else {
-                bind(type).toEagerSingleton();
+        Reflections.consume(getClass().getClassLoader(), name, true, type -> {
+            if (type.isAnnotationPresent(Singleton.class)) {
+                if (type.getAnnotation(Singleton.class).lazy()) {
+                    bind(type).toSingleton();
+                } else {
+                    bind(type).toEagerSingleton();
+                }
             }
         });
 

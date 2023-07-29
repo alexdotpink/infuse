@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="inject InstanceProviders">
+    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="accept null in construct">
+      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/reflection/ReflectionException.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/reflection/Reflections.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" afterDir="false" />
@@ -54,6 +56,7 @@
     "WebServerToolWindowFactoryState": "false",
     "dart.analysis.tool.window.visible": "false",
     "git-widget-placeholder": "main",
+    "last_opened_file_path": "/Users/alex/IdeaProjects/infuse/src/main/java/dev/fumaz/infuse",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -66,6 +69,11 @@
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse" />
+    </key>
+  </component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
@@ -95,7 +103,7 @@
       <workItem from="1685372312316" duration="17000" />
       <workItem from="1689105138852" duration="1040000" />
       <workItem from="1690203814903" duration="812000" />
-      <workItem from="1690546829375" duration="1355000" />
+      <workItem from="1690546829375" duration="3039000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <created>1664996219817</created>
@@ -177,7 +185,15 @@
       <option name="project" value="LOCAL" />
       <updated>1690547489857</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="accept null in construct">
+      <option name="closed" value="true" />
+      <created>1690556652592</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1690556652592</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -207,6 +223,7 @@
     <MESSAGE value="Update annotations and version in conf files&#10;&#10;Modified the wording for annotations in PostInject and PostConstruct files to match the actual behavior of the methods they annotate. Updated the version in build.gradle and cleaned up the format. Also, adjusted the settings and properties regarding the change tracking in the .idea files, and added credentials for Fumaz repository. These updates are necessary for correctly reflecting the status and functionality of the codebase and properly tracking the changes being made." />
     <MESSAGE value="inject variables first then methods" />
     <MESSAGE value="inject InstanceProviders" />
-    <option name="LAST_COMMIT_MESSAGE" value="inject InstanceProviders" />
+    <MESSAGE value="accept null in construct" />
+    <option name="LAST_COMMIT_MESSAGE" value="accept null in construct" />
   </component>
 </project>
