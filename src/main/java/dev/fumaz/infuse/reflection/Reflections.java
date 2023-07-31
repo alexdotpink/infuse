@@ -132,7 +132,7 @@ public final class Reflections {
                     try {
                         Class<?> clazz = Class.forName(className);
                         classes.add(clazz);
-                    } catch (NoClassDefFoundError e) {
+                    } catch (Exception e) {
                     }
                 }
             }
