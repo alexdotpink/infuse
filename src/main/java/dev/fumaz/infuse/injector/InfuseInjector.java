@@ -204,8 +204,9 @@ public class InfuseInjector implements Injector {
                     }
 
                     method.invoke(binding.getProvider().provide(new Context<>(binding.getType(), this, this, ElementType.METHOD, method.getName(), method.getAnnotations())));
-                } catch (Exception e) {
+                } catch (InvocationTargetException | IllegalAccessException e) {
                     e.printStackTrace();
+                } catch (Exception ignored) {
                 }
             }
         });
