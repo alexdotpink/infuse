@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="catch all" />
+    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="owo" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -113,7 +113,7 @@
       <workItem from="1690546829375" duration="4908000" />
       <workItem from="1690754317145" duration="1995000" />
       <workItem from="1690898280019" duration="335000" />
-      <workItem from="1691060151569" duration="824000" />
+      <workItem from="1691060151569" duration="1175000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <created>1664996219817</created>
@@ -251,7 +251,15 @@
       <option name="project" value="LOCAL" />
       <updated>1690813635041</updated>
     </task>
-    <option name="localTasksCounter" value="19" />
+    <task id="LOCAL-00019" summary="owo">
+      <option name="closed" value="true" />
+      <created>1691156080053</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1691156080053</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -287,6 +295,7 @@
     <MESSAGE value="fix bindpackage" />
     <MESSAGE value="bump" />
     <MESSAGE value="catch all" />
-    <option name="LAST_COMMIT_MESSAGE" value="catch all" />
+    <MESSAGE value="owo" />
+    <option name="LAST_COMMIT_MESSAGE" value="owo" />
   </component>
 </project>

@@ -197,12 +197,11 @@ public class InfuseInjector implements Injector {
         getBindings().forEach(binding -> {
             for (Method method : getAllMethods(binding.getType())) {
                 try {
-                    method.setAccessible(true);
-
                     if (!method.isAnnotationPresent(PreDestroy.class)) {
                         continue;
                     }
 
+                    method.setAccessible(true);
                     method.invoke(binding.getProvider().provide(new Context<>(binding.getType(), this, this, ElementType.METHOD, method.getName(), method.getAnnotations())));
                 } catch (InvocationTargetException | IllegalAccessException e) {
                     e.printStackTrace();
