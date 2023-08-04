@@ -196,16 +196,16 @@ public class InfuseInjector implements Injector {
     public void destroy() {
         getBindings().forEach(binding -> {
             for (Method method : getAllMethods(binding.getType())) {
-                method.setAccessible(true);
-
-                if (!method.isAnnotationPresent(PreDestroy.class)) {
-                    continue;
-                }
-
                 try {
+                    method.setAccessible(true);
+
+                    if (!method.isAnnotationPresent(PreDestroy.class)) {
+                        continue;
+                    }
+
                     method.invoke(binding.getProvider().provide(new Context<>(binding.getType(), this, this, ElementType.METHOD, method.getName(), method.getAnnotations())));
-                } catch (IllegalAccessException | InvocationTargetException e) {
-                    throw new RuntimeException(e);
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
             }
         });
