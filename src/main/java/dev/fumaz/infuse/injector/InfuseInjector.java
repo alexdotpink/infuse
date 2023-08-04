@@ -196,8 +196,10 @@ public class InfuseInjector implements Injector {
     public void destroy() {
         getBindings().forEach(binding -> {
             for (Method method : getAllMethods(binding.getType())) {
+                method.setAccessible(true);
+
                 if (!method.isAnnotationPresent(PreDestroy.class)) {
-                    return;
+                    continue;
                 }
 
                 try {

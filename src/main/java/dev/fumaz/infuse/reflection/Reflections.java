@@ -103,7 +103,7 @@ public final class Reflections {
                     try {
                         Class<?> clazz = Class.forName(packageName + "." + className);
                         classes.add(clazz);
-                    } catch (NoClassDefFoundError e) {
+                    } catch (Throwable e) {
                     }
                 }
             }
@@ -113,8 +113,7 @@ public final class Reflections {
         return classes;
     }
 
-    private static Set<Class<?>> findClassesInJar(String jarPath, String pkgPath, String packageName, boolean recursive)
-            throws ClassNotFoundException, IOException {
+    private static Set<Class<?>> findClassesInJar(String jarPath, String pkgPath, String packageName, boolean recursive) {
         try (JarFile jarFile = new JarFile(URLDecoder.decode(jarPath, StandardCharsets.UTF_8.name()))) {
             Set<Class<?>> classes = new HashSet<>();
             Enumeration<JarEntry> entries = jarFile.entries();
@@ -132,12 +131,14 @@ public final class Reflections {
                     try {
                         Class<?> clazz = Class.forName(className);
                         classes.add(clazz);
-                    } catch (Exception e) {
+                    } catch (Throwable e) {
                     }
                 }
             }
 
             return classes;
+        } catch (Exception e) {
+            return Collections.emptySet();
         }
     }
 
