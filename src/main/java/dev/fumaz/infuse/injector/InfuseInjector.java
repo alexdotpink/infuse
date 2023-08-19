@@ -116,48 +116,58 @@ public class InfuseInjector implements Injector {
 
     @Override
     public <T> T provide(@NotNull Class<T> type, @NotNull Context<?> context) {
-        cache.put(context.getObject().getClass(), context.getObject());
+        try {
+            cache.put(context.getObject().getClass(), context.getObject());
 
-        if (cache.containsKey(type)) {
-            return (T) cache.get(type);
-        }
+            if (cache.containsKey(type)) {
+                return (T) cache.get(type);
+            }
 
-        Binding<T> binding = getBindingOrNull(type);
+            Binding<T> binding = getBindingOrNull(type);
 
-        if (binding != null) {
-            T t = binding.getProvider().provide(context);
+            if (binding != null) {
+                T t = binding.getProvider().provide(context);
+                cache.remove(context.getObject().getClass());
+
+                return t;
+            }
+
+            T t = construct(type);
             cache.remove(context.getObject().getClass());
 
             return t;
+        } catch (Exception e) {
+            System.err.println("Failed to provide " + type.getName());
+            throw e;
         }
-
-        T t = construct(type);
-        cache.remove(context.getObject().getClass());
-
-        return t;
     }
 
     @Override
     public <T> @Nullable T provide(@NotNull Class<T> type, @NotNull Object calling) {
-        cache.put(calling.getClass(), calling);
+        try {
+            cache.put(calling.getClass(), calling);
 
-        if (cache.containsKey(type)) {
-            return (T) cache.get(type);
-        }
+            if (cache.containsKey(type)) {
+                return (T) cache.get(type);
+            }
 
-        Binding<T> binding = getBindingOrNull(type);
+            Binding<T> binding = getBindingOrNull(type);
 
-        if (binding != null) {
-            T t = binding.getProvider().provide(this, calling);
+            if (binding != null) {
+                T t = binding.getProvider().provide(this, calling);
+                cache.remove(calling.getClass());
+
+                return t;
+            }
+
+            T t = construct(type);
             cache.remove(calling.getClass());
 
             return t;
+        } catch (Exception e) {
+            System.err.println("Failed to provide " + type.getName());
+            throw e;
         }
-
-        T t = construct(type);
-        cache.remove(calling.getClass());
-
-        return t;
     }
 
     @Override
@@ -183,7 +193,8 @@ public class InfuseInjector implements Injector {
             inject(t);
 
             return t;
-        } catch (ReflectiveOperationException e) {
+        } catch (Exception e) {
+            System.err.println("Failed to construct " + type.getName());
             throw new RuntimeException(e);
         }
     }
@@ -208,7 +219,8 @@ public class InfuseInjector implements Injector {
             }
 
             return t;
-        } catch (ReflectiveOperationException e) {
+        } catch (Exception e) {
+            System.err.println("Failed to construct without injecting " + type.getName());
             throw new RuntimeException(e);
         }
     }
@@ -224,9 +236,8 @@ public class InfuseInjector implements Injector {
 
                     method.setAccessible(true);
                     method.invoke(binding.getProvider().provide(new Context<>(binding.getType(), this, this, ElementType.METHOD, method.getName(), method.getAnnotations())));
-                } catch (InvocationTargetException | IllegalAccessException e) {
+                } catch (Exception e) {
                     e.printStackTrace();
-                } catch (Exception ignored) {
                 }
             }
         });
