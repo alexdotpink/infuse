@@ -51,7 +51,7 @@ public class InfuseInjector implements Injector {
                 provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
             } catch (Exception e) {
                 System.err.println("Failed to eagerly initialize " + binding.getType().getName());
-                e.printStackTrace();
+                throw e;
             }
         });
 
@@ -70,7 +70,7 @@ public class InfuseInjector implements Injector {
                 injectVariables(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
             } catch (Exception e) {
                 System.err.println("Failed to eagerly inject variables in " + binding.getType().getName());
-                e.printStackTrace();
+                throw e;
             }
         });
 
@@ -89,7 +89,7 @@ public class InfuseInjector implements Injector {
                 injectMethods(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
             } catch (Exception e) {
                 System.err.println("Failed to eagerly inject methods in " + binding.getType().getName());
-                e.printStackTrace();
+                throw e;
             }
         });
 
@@ -104,7 +104,7 @@ public class InfuseInjector implements Injector {
                 provider.provide(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
             } catch (Exception e) {
                 System.err.println("Failed to eagerly initialize " + binding.getType().getName());
-                e.printStackTrace();
+                throw e;
             }
         });
     }
