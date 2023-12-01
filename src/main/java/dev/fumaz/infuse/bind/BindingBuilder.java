@@ -48,6 +48,12 @@ public class BindingBuilder<T> {
         return build();
     }
 
+    public Binding<T> toImmutableInstance(@Nullable T instance) {
+        this.provider = Provider.immutableInstance(instance);
+
+        return build();
+    }
+
     public Binding<T> build() {
         if (provider == null) {
             throw new IllegalStateException("No provider was set");

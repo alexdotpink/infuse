@@ -20,6 +20,10 @@ public interface Provider<T> {
         return new InstanceProvider<>(instance);
     }
 
+    static <T> @NotNull Provider<T> immutableInstance(T instance) {
+        return new ImmutableInstanceProvider<>(instance);
+    }
+
     static <T> @NotNull Provider<T> singleton(Class<T> type) {
         return new SingletonProvider<>(type, false);
     }
