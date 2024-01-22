@@ -17,9 +17,13 @@ import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -74,6 +78,8 @@ public class InfuseInjector implements Injector {
             }
         });
 
+        List<ObjectWithMethod> methods = new ArrayList<>();
+
         getOwnBindings().forEach(binding -> {
             if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
                 return;
@@ -85,13 +91,21 @@ public class InfuseInjector implements Injector {
                 return;
             }
 
-            try {
-                injectMethods(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
-            } catch (Exception e) {
-                System.err.println("Failed to eagerly inject methods in " + binding.getType().getName());
-                throw e;
-            }
+            Object object = provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
+            getMethodsAnnotatedWith(object.getClass(), PostInject.class)
+                    .forEach(method -> methods.add(new ObjectWithMethod(object, method)));
         });
+
+        methods.stream()
+                .sorted(Comparator.comparing(method -> method.getMethod().getAnnotation(PostInject.class).priority()))
+                .forEach(method -> {
+                    try {
+                        injectMethod(method.getObject(), method.getMethod());
+                    } catch (Exception e) {
+                        System.err.println("Failed to eagerly inject method " + method.getMethod().getName() + " in " + method.getObject().getClass().getName());
+                        throw e;
+                    }
+                });
 
         getOwnBindings().forEach(binding -> {
             if (!(binding.getProvider() instanceof InstanceProvider<?>)) {
@@ -111,7 +125,7 @@ public class InfuseInjector implements Injector {
 
     public void inject(@NotNull Object object) {
         injectVariables(object);
-        injectMethods(object);
+        postInject(object);
     }
 
     @Override
@@ -183,13 +197,7 @@ public class InfuseInjector implements Injector {
         try {
             T t = constructor.newInstance(getConstructorArguments(constructor, args));
 
-            for (Method method : t.getClass().getDeclaredMethods()) {
-                if (method.isAnnotationPresent(PostConstruct.class)) {
-                    method.setAccessible(true);
-                    method.invoke(t);
-                }
-            }
-
+            postConstruct(t);
             inject(t);
 
             return t;
@@ -211,12 +219,7 @@ public class InfuseInjector implements Injector {
         try {
             T t = constructor.newInstance(getConstructorArguments(constructor, args));
 
-            for (Method method : t.getClass().getDeclaredMethods()) {
-                if (method.isAnnotationPresent(PostConstruct.class)) {
-                    method.setAccessible(true);
-                    method.invoke(t);
-                }
-            }
+            postConstruct(t);
 
             return t;
         } catch (Exception e) {
@@ -228,18 +231,7 @@ public class InfuseInjector implements Injector {
     @Override
     public void destroy() {
         getBindings().forEach(binding -> {
-            for (Method method : getAllMethods(binding.getType())) {
-                try {
-                    if (!method.isAnnotationPresent(PreDestroy.class)) {
-                        continue;
-                    }
-
-                    method.setAccessible(true);
-                    method.invoke(binding.getProvider().provide(new Context<>(binding.getType(), this, this, ElementType.METHOD, method.getName(), method.getAnnotations())));
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
+            preDestroy(binding.getProvider().provide(new Context<>(binding.getType(), this, this, ElementType.FIELD, "field", new Annotation[0])));
         });
     }
 
@@ -459,18 +451,61 @@ public class InfuseInjector implements Injector {
         }
     }
 
-    private void injectMethods(Object object) {
-        for (Method method : getAllMethods(object.getClass())) {
-            if (method.isAnnotationPresent(PostInject.class)) {
-                method.setAccessible(true);
+    private void preDestroy(Object object) {
+        getMethodsAnnotatedWith(object.getClass(), PreDestroy.class)
+                .stream()
+                .sorted(Comparator.comparing(method -> method.getAnnotation(PreDestroy.class).priority()))
+                .forEach(method -> injectMethod(object, method));
+    }
 
-                try {
-                    method.invoke(object);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }
+    private void postInject(Object object) {
+        getMethodsAnnotatedWith(object.getClass(), PostInject.class)
+                .stream()
+                .sorted(Comparator.comparing(method -> method.getAnnotation(PostInject.class).priority()))
+                .forEach(method -> injectMethod(object, method));
+    }
+
+    private void postConstruct(Object object) {
+        getMethodsAnnotatedWith(object.getClass(), PostConstruct.class)
+                .stream()
+                .sorted(Comparator.comparing(method -> method.getAnnotation(PostConstruct.class).priority()))
+                .forEach(method -> injectMethod(object, method));
+    }
+
+    private List<Method> getMethodsAnnotatedWith(Class<?> type, Class<? extends Annotation> annotation) {
+        return Arrays.stream(type.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(annotation))
+                .collect(Collectors.toList());
+    }
+
+    private void injectMethod(Object object, Method method) {
+        method.setAccessible(true);
+
+        try {
+            method.invoke(object);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
+    }
+
+    private static class ObjectWithMethod {
+
+        private final Object object;
+        private final Method method;
+
+        public ObjectWithMethod(Object object, Method method) {
+            this.object = object;
+            this.method = method;
+        }
+
+        public Object getObject() {
+            return object;
+        }
+
+        public Method getMethod() {
+            return method;
+        }
+
     }
 
 }

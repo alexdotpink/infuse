@@ -9,5 +9,7 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface Singleton {
+
     boolean lazy() default false;
+
 }
