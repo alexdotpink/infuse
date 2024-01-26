@@ -59,6 +59,7 @@ public class InfuseInjector implements Injector {
             }
         });
 
+
         getOwnBindings().forEach(binding -> {
             if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
                 return;
@@ -74,6 +75,27 @@ public class InfuseInjector implements Injector {
                 injectVariables(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
             } catch (Exception e) {
                 System.err.println("Failed to eagerly inject variables in " + binding.getType().getName());
+                throw e;
+            }
+        });
+
+        getOwnBindings().forEach(binding -> {
+            if (!(binding.getProvider() instanceof InstanceProvider<?>)) {
+                return;
+            }
+
+            InstanceProvider<?> provider = (InstanceProvider<?>) binding.getProvider();
+
+            try {
+                Object object = provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
+
+                if (object == null) {
+                    return;
+                }
+
+                injectVariables(object);
+            } catch (Exception e) {
+                System.err.println("Failed to eagerly initialize " + binding.getType().getName());
                 throw e;
             }
         });
@@ -96,6 +118,22 @@ public class InfuseInjector implements Injector {
                     .forEach(method -> methods.add(new ObjectWithMethod(object, method)));
         });
 
+        getOwnBindings().forEach(binding -> {
+            if (!(binding.getProvider() instanceof InstanceProvider<?>)) {
+                return;
+            }
+
+            InstanceProvider<?> provider = (InstanceProvider<?>) binding.getProvider();
+            Object object = provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
+
+            if (object == null) {
+                return;
+            }
+
+            getMethodsAnnotatedWith(object.getClass(), PostInject.class)
+                    .forEach(method -> methods.add(new ObjectWithMethod(object, method)));
+        });
+
         methods.stream()
                 .sorted(Comparator.comparing(method -> method.getMethod().getAnnotation(PostInject.class).priority()))
                 .forEach(method -> {
@@ -106,21 +144,6 @@ public class InfuseInjector implements Injector {
                         throw e;
                     }
                 });
-
-        getOwnBindings().forEach(binding -> {
-            if (!(binding.getProvider() instanceof InstanceProvider<?>)) {
-                return;
-            }
-
-            InstanceProvider<?> provider = (InstanceProvider<?>) binding.getProvider();
-
-            try {
-                provider.provide(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
-            } catch (Exception e) {
-                System.err.println("Failed to eagerly initialize " + binding.getType().getName());
-                throw e;
-            }
-        });
     }
 
     public void inject(@NotNull Object object) {

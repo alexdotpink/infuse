@@ -4,14 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="oopsie">
+    <list default="true" id="a68d4335-214f-4ea3-a327-ccbc5247801b" name="Changes" comment="priority based system">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/PostConstruct.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/PostConstruct.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/PostInject.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/PostInject.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/PreDestroy.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/PreDestroy.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/Singleton.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/annotation/Singleton.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/injector/InfuseInjector.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/InstanceProvider.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/dev/fumaz/infuse/provider/InstanceProvider.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -161,7 +158,8 @@
       <workItem from="1705238249177" duration="1132000" />
       <workItem from="1705665777151" duration="598000" />
       <workItem from="1705689016244" duration="4107000" />
-      <workItem from="1705844046440" duration="1216000" />
+      <workItem from="1705844046440" duration="3075000" />
+      <workItem from="1706203133991" duration="1048000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <created>1664996219817</created>
@@ -331,7 +329,15 @@
       <option name="project" value="LOCAL" />
       <updated>1705238785711</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="priority based system">
+      <option name="closed" value="true" />
+      <created>1705955168730</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1705955168730</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -371,6 +377,7 @@
     <MESSAGE value="do not acces methods that dont have annotation" />
     <MESSAGE value="ImmutableInstanceProvider" />
     <MESSAGE value="oopsie" />
-    <option name="LAST_COMMIT_MESSAGE" value="oopsie" />
+    <MESSAGE value="priority based system" />
+    <option name="LAST_COMMIT_MESSAGE" value="priority based system" />
   </component>
 </project>

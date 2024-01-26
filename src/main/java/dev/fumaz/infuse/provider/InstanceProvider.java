@@ -29,4 +29,8 @@ public class InstanceProvider<T> implements Provider<T> {
         return instance;
     }
 
+    public @Nullable T provideWithoutInjecting(Context<?> context) {
+        return instance;
+    }
+
 }
