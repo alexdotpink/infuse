@@ -21,10 +21,10 @@ public class InstanceProvider<T> implements Provider<T> {
 
     @Override
     public @Nullable T provide(Context<?> context) {
-        if (!injected && instance != null) {
-            context.getInjector().inject(instance);
-            injected = true;
-        }
+//        if (!injected && instance != null) {
+//            context.getInjector().inject(instance);
+//            injected = true;
+//        }
 
         return instance;
     }

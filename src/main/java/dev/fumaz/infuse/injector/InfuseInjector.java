@@ -306,7 +306,7 @@ public class InfuseInjector implements Injector {
     @Override
     public @NotNull <T> List<Binding<? extends T>> getBindings(Class<T> type) {
         return getBindings().stream()
-                .filter(binding -> type.isAssignableFrom(binding.getType()))
+                .filter(binding -> type.isAssignableFrom(binding.getType()) || binding.getType().isAssignableFrom(type))
                 .map(binding -> (Binding<? extends T>) binding)
                 .collect(Collectors.toList());
     }
