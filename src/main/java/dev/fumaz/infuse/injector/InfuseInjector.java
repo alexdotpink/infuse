@@ -226,6 +226,7 @@ public class InfuseInjector implements Injector {
             return t;
         } catch (Exception e) {
             System.err.println("Failed to construct " + type.getName());
+            e.printStackTrace();
             throw new RuntimeException(e);
         }
     }
@@ -247,6 +248,7 @@ public class InfuseInjector implements Injector {
             return t;
         } catch (Exception e) {
             System.err.println("Failed to construct without injecting " + type.getName());
+            e.printStackTrace();
             throw new RuntimeException(e);
         }
     }
