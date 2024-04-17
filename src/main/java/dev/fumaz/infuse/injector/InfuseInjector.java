@@ -498,7 +498,8 @@ public class InfuseInjector implements Injector {
     }
 
     private List<Method> getMethodsAnnotatedWith(Class<?> type, Class<? extends Annotation> annotation) {
-        return Arrays.stream(type.getDeclaredMethods())
+        return getAllMethods(type)
+                .stream()
                 .filter(method -> method.isAnnotationPresent(annotation))
                 .collect(Collectors.toList());
     }
