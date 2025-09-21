@@ -5,6 +5,7 @@ import dev.fumaz.infuse.annotation.Qualifier;
 import dev.fumaz.infuse.bind.BindingQualifier;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedElement;
 
 public final class InjectionUtils {
 
@@ -23,6 +24,15 @@ public final class InjectionUtils {
         }
 
         return false;
+    }
+
+    public static boolean isOptional(AnnotatedElement annotated) {
+        if (annotated == null) {
+            return false;
+        }
+
+        Inject inject = annotated.getAnnotation(Inject.class);
+        return inject != null && inject.optional();
     }
 
     public static BindingQualifier resolveQualifier(Annotation[] annotations) {

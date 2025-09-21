@@ -688,28 +688,28 @@ public class InfuseInjector implements Injector {
                 .getInjectableFields()
                 .forEach(field -> {
                     try {
-                        Annotation[] annotations = field.getAnnotations();
-                        boolean optional = InjectionUtils.isOptional(annotations);
-                        Object value;
                         Context<?> fieldContext = Context.borrow(object.getClass(), object, this, ElementType.FIELD,
-                                field.getName(), annotations);
+                                field.getName(), field::getAnnotations);
+                        Object value;
 
                         try {
                             value = provide(field.getType(), fieldContext);
+
+                            if (value == null) {
+                                if (InjectionUtils.isOptional(field)) {
+                                    if (field.getType().isPrimitive()) {
+                                        return;
+                                    }
+
+                                    field.set(object, null);
+                                    return;
+                                }
+                            }
+
+                            field.set(object, value);
                         } finally {
                             fieldContext.release();
                         }
-
-                        if (value == null && optional) {
-                            if (field.getType().isPrimitive()) {
-                                return;
-                            }
-
-                            field.set(object, null);
-                            return;
-                        }
-
-                        field.set(object, value);
                     } catch (Exception e) {
                         String message = "Failed to inject field " + field.getName() + " in "
                                 + object.getClass().getName();
@@ -796,8 +796,7 @@ public class InfuseInjector implements Injector {
     private @NotNull Object[] getMethodArguments(@NotNull Method method) {
         return Arrays.stream(method.getParameters())
                 .map(parameter -> {
-                    Annotation[] annotations = parameter.getAnnotations();
-                    boolean optional = InjectionUtils.isOptional(annotations);
+                    boolean optional = InjectionUtils.isOptional(parameter);
 
                     if (optional && parameter.getType().isPrimitive()) {
                         throw new IllegalArgumentException("Optional method parameter " + parameter.getName()
@@ -806,20 +805,19 @@ public class InfuseInjector implements Injector {
                     }
 
                     Context<?> parameterContext = Context.borrow(method.getDeclaringClass(), this, this,
-                            ElementType.METHOD, parameter.getName(), annotations);
-                    Object value;
+                            ElementType.METHOD, parameter.getName(), parameter::getAnnotations);
 
                     try {
-                        value = provide(parameter.getType(), parameterContext);
+                        Object value = provide(parameter.getType(), parameterContext);
+
+                        if (optional && value == null) {
+                            return null;
+                        }
+
+                        return value;
                     } finally {
                         parameterContext.release();
                     }
-
-                    if (optional && value == null) {
-                        return null;
-                    }
-
-                    return value;
                 })
                 .toArray();
     }

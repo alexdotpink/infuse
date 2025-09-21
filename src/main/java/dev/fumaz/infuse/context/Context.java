@@ -7,6 +7,7 @@ import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.function.Supplier;
 
 /**
  * A {@link Context} is the state of the injected member.
@@ -24,11 +25,19 @@ public final class Context<T> implements ContextView<T> {
     private ElementType element;
     private String name;
     private Annotation[] annotations;
+    private Supplier<Annotation[]> annotationsSupplier;
     private boolean pooled;
 
     public Context(@NotNull Class<T> type, @NotNull Object object, @NotNull Injector injector,
                    @NotNull ElementType element, @NotNull String name, Annotation[] annotations) {
         initialise(type, object, injector, element, name, annotations);
+        this.pooled = false;
+    }
+
+    public Context(@NotNull Class<T> type, @NotNull Object object, @NotNull Injector injector,
+                   @NotNull ElementType element, @NotNull String name,
+                   @NotNull Supplier<Annotation[]> annotationsSupplier) {
+        initialise(type, object, injector, element, name, annotationsSupplier);
         this.pooled = false;
     }
 
@@ -50,6 +59,26 @@ public final class Context<T> implements ContextView<T> {
         }
 
         context.initialise(type, object, injector, element, name, annotations);
+        context.pooled = true;
+        return context;
+    }
+
+    public static <T> @NotNull Context<T> borrow(@NotNull Class<T> type, @NotNull Object object,
+                                                 @NotNull Injector injector, @NotNull ElementType element,
+                                                 @NotNull String name,
+                                                 @NotNull Supplier<Annotation[]> annotationsSupplier) {
+        Deque<Context<?>> pool = POOL.get();
+        Context<T> context;
+
+        Context<?> pooled = pool.pollLast();
+        if (pooled == null) {
+            context = new Context<>();
+        } else {
+            @SuppressWarnings("unchecked") Context<T> cast = (Context<T>) pooled;
+            context = cast;
+        }
+
+        context.initialise(type, object, injector, element, name, annotationsSupplier);
         context.pooled = true;
         return context;
     }
@@ -80,7 +109,24 @@ public final class Context<T> implements ContextView<T> {
         this.injector = injector;
         this.element = element;
         this.name = name;
-        this.annotations = annotations == null ? EMPTY_ANNOTATIONS : annotations;
+        this.annotationsSupplier = null;
+        this.annotations = annotations == null || annotations.length == 0 ? EMPTY_ANNOTATIONS : annotations;
+    }
+
+    private void initialise(Class<T> type, Object object, Injector injector, ElementType element, String name,
+                            Supplier<Annotation[]> annotationsSupplier) {
+        this.type = type;
+        this.object = object;
+        this.injector = injector;
+        this.element = element;
+        this.name = name;
+        if (annotationsSupplier == null) {
+            this.annotations = EMPTY_ANNOTATIONS;
+            this.annotationsSupplier = null;
+        } else {
+            this.annotations = null;
+            this.annotationsSupplier = annotationsSupplier;
+        }
     }
 
     private void clear() {
@@ -90,6 +136,7 @@ public final class Context<T> implements ContextView<T> {
         this.element = null;
         this.name = null;
         this.annotations = null;
+        this.annotationsSupplier = null;
         this.pooled = false;
     }
 
@@ -140,10 +187,29 @@ public final class Context<T> implements ContextView<T> {
 
     @Override
     public Annotation[] getAnnotations() {
-        Annotation[] current = annotations;
-        if (current == null) {
+        if (type == null) {
             throw new IllegalStateException("Context has been released back to the pool");
         }
+
+        Annotation[] current = annotations;
+        if (current != null) {
+            return current;
+        }
+
+        Supplier<Annotation[]> supplier = annotationsSupplier;
+        if (supplier == null) {
+            current = EMPTY_ANNOTATIONS;
+        } else {
+            current = supplier.get();
+
+            if (current == null || current.length == 0) {
+                current = EMPTY_ANNOTATIONS;
+            }
+
+            annotations = current;
+            annotationsSupplier = null;
+        }
+
         return current;
     }
 

@@ -49,7 +49,7 @@ public interface Provider<T> {
 
         // Passing null lets Context borrow reuse its shared empty annotation array.
         Context<?> context = Context.borrow(calling.getClass(), calling, injector, ElementType.FIELD, "field",
-                null);
+                (Annotation[]) null);
         try {
             return provide(context);
         } finally {

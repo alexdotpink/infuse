@@ -253,19 +253,18 @@ public class BindingBuilder<T> {
     }
 
     private Object resolveParameter(Context<?> parentContext, Parameter parameter) {
-        Annotation[] annotations = parameter.getAnnotations();
-        boolean optional = InjectionUtils.isOptional(annotations);
         Class<?> parameterType = parameter.getType();
         Injector injector = parentContext.getInjector();
 
         Context<?> parameterContext = Context.borrow(parameter.getDeclaringExecutable().getDeclaringClass(),
-                parentContext.getObject(), injector, ElementType.CONSTRUCTOR, parameter.getName(), annotations);
+                parentContext.getObject(), injector, ElementType.CONSTRUCTOR, parameter.getName(),
+                parameter::getAnnotations);
 
         try {
             Object resolved = injector.provide(parameterType, parameterContext);
 
             if (resolved == null) {
-                if (optional) {
+                if (InjectionUtils.isOptional(parameter)) {
                     if (parameterType.isPrimitive()) {
                         throw new IllegalStateException("Optional constructor parameter " + parameter.getName()
                                 + " cannot target primitive type " + parameterType.getName());
