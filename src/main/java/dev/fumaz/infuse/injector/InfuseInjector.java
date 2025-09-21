@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,7 @@ public class InfuseInjector implements Injector {
     private final @NotNull Map<Class<?>, InjectionPlan> injectionPlans;
     private final @NotNull BindingRegistry bindingRegistry;
     private final @NotNull List<Binding<?>> ownBindings;
+    private final @NotNull ScopedInstanceRegistry scopedInstances;
     private final @NotNull ResolutionScopes resolutionScopes;
 
     public InfuseInjector(@Nullable Injector parent, @NotNull List<Module> modules) {
@@ -50,6 +52,7 @@ public class InfuseInjector implements Injector {
         this.injectionPlans = new HashMap<>();
         this.bindingRegistry = new BindingRegistry();
         this.ownBindings = new ArrayList<>();
+        this.scopedInstances = new ScopedInstanceRegistry();
         this.resolutionScopes = new ResolutionScopes(this);
 
         for (Module module : modules) {
@@ -74,7 +77,7 @@ public class InfuseInjector implements Injector {
                 (context) -> Logger.getLogger(context.getType().getSimpleName()),
                 BindingQualifier.none(), BindingScope.UNSCOPED, false));
 
-        List<Object> eagerSingletons = new ArrayList<>();
+        List<EagerInstanceRecord> eagerSingletons = new ArrayList<>();
         for (Binding<?> binding : getOwnBindings()) {
             Provider<?> provider = binding.getProvider();
             Object instance = null;
@@ -88,12 +91,13 @@ public class InfuseInjector implements Injector {
             }
 
             if (instance != null) {
-                eagerSingletons.add(instance);
+                eagerSingletons.add(new EagerInstanceRecord(binding, instance));
             }
         }
 
         List<Method> postInjectMethods = new ArrayList<>();
-        for (Object singleton : eagerSingletons) {
+        for (EagerInstanceRecord eagerSingleton : eagerSingletons) {
+            Object singleton = eagerSingleton.instance();
             ResolutionScopeHandle scope = resolutionScopes.enter(singleton);
 
             try {
@@ -109,7 +113,9 @@ public class InfuseInjector implements Injector {
         postInjectMethods.sort(Comparator.comparingInt(m -> m.getAnnotation(PostInject.class).priority()));
 
         for (Method method : postInjectMethods) {
-            for (Object singleton : eagerSingletons) {
+            for (EagerInstanceRecord eagerSingleton : eagerSingletons) {
+                Object singleton = eagerSingleton.instance();
+
                 if (method.getDeclaringClass().isInstance(singleton)) {
                     try {
                         injectMethod(singleton, method);
@@ -120,6 +126,10 @@ public class InfuseInjector implements Injector {
                     }
                 }
             }
+        }
+
+        for (EagerInstanceRecord eagerSingleton : eagerSingletons) {
+            recordScopedInstance(eagerSingleton.binding(), eagerSingleton.instance());
         }
     }
 
@@ -142,6 +152,19 @@ public class InfuseInjector implements Injector {
     private void registerBinding(@NotNull Binding<?> binding) {
         bindingRegistry.add(binding);
         ownBindings.add(binding);
+    }
+
+    private void recordScopedInstance(@NotNull Binding<?> binding, @Nullable Object instance) {
+        if (instance == null) {
+            return;
+        }
+
+        if (ownBindings.contains(binding) || !(parent instanceof InfuseInjector)) {
+            scopedInstances.record(binding, instance);
+            return;
+        }
+
+        ((InfuseInjector) parent).recordScopedInstance(binding, instance);
     }
 
     private <T> List<Binding<T>> resolveBindings(@NotNull Class<T> type,
@@ -199,12 +222,18 @@ public class InfuseInjector implements Injector {
 
             frame = resolutionScopes.begin(type);
 
-            T instance = !matches.isEmpty()
-                    ? matches.get(0).getProvider().provide(context)
+            Binding<T> binding = matches.isEmpty() ? null : matches.get(0);
+
+            T instance = binding != null
+                    ? binding.getProvider().provide(context)
                     : construct(type);
 
-            if (instance == null && optional) {
-                return null;
+            if (instance == null) {
+                if (optional) {
+                    return null;
+                }
+            } else if (binding != null) {
+                recordScopedInstance(binding, instance);
             }
 
             resolutionScopes.record(type, instance);
@@ -293,10 +322,16 @@ public class InfuseInjector implements Injector {
 
     @Override
     public void destroy() {
-        getBindings().forEach(binding -> {
-            preDestroy(binding.getProvider().provide(
-                    new Context<>(binding.getType(), this, this, ElementType.FIELD, "field", new Annotation[0])));
-        });
+        List<ScopedInstanceEntry> recorded = scopedInstances.drain();
+        Collections.reverse(recorded);
+
+        for (ScopedInstanceEntry entry : recorded) {
+            preDestroy(entry.instance);
+        }
+
+        if (parent != null) {
+            parent.destroy();
+        }
     }
 
     @Override
@@ -888,6 +923,65 @@ public class InfuseInjector implements Injector {
             }
 
             return null;
+        }
+    }
+
+    private static final class EagerInstanceRecord {
+        private final Binding<?> binding;
+        private final Object instance;
+
+        private EagerInstanceRecord(Binding<?> binding, Object instance) {
+            this.binding = binding;
+            this.instance = instance;
+        }
+
+        private Binding<?> binding() {
+            return binding;
+        }
+
+        private Object instance() {
+            return instance;
+        }
+    }
+
+    private static final class ScopedInstanceRegistry {
+        private final Map<Object, ScopedInstanceEntry> instances = new IdentityHashMap<>();
+        private final List<ScopedInstanceEntry> order = new ArrayList<>();
+
+        private synchronized void record(Binding<?> binding, Object instance) {
+            if (binding == null || instance == null) {
+                return;
+            }
+
+            BindingScope scope = binding.getScope();
+            if (scope == null || scope.isAny() || BindingScope.UNSCOPED.equals(scope)) {
+                return;
+            }
+
+            if (instances.containsKey(instance)) {
+                return;
+            }
+
+            ScopedInstanceEntry entry = new ScopedInstanceEntry(binding, instance);
+            instances.put(instance, entry);
+            order.add(entry);
+        }
+
+        private synchronized List<ScopedInstanceEntry> drain() {
+            List<ScopedInstanceEntry> snapshot = new ArrayList<>(order);
+            instances.clear();
+            order.clear();
+            return snapshot;
+        }
+    }
+
+    private static final class ScopedInstanceEntry {
+        private final Binding<?> binding;
+        private final Object instance;
+
+        private ScopedInstanceEntry(Binding<?> binding, Object instance) {
+            this.binding = binding;
+            this.instance = instance;
         }
     }
 
