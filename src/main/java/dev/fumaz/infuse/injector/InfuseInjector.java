@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Objects;
 import java.util.logging.Logger;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -225,13 +226,17 @@ public class InfuseInjector implements Injector {
         boolean optional = InjectionUtils.isOptional(context.getAnnotations());
 
         try {
+            BindingQualifier qualifier = InjectionUtils.resolveQualifier(context.getAnnotations());
             Object existing = resolutionScopes.lookup(type);
 
             if (existing != null) {
+                if (resolutionScopes.isResolving(type, qualifier)) {
+                    resolutionScopes.detectExistingCycle(type, qualifier, context);
+                }
+
                 return type.cast(existing);
             }
 
-            BindingQualifier qualifier = InjectionUtils.resolveQualifier(context.getAnnotations());
             List<Binding<T>> matches = resolveBindings(type, qualifier, BindingScope.ANY);
 
             if (matches.isEmpty() && optional) {
@@ -250,9 +255,11 @@ public class InfuseInjector implements Injector {
                         + (qualifier.isDefault() ? "" : " qualified by " + qualifier));
             }
 
-            frame = resolutionScopes.begin(type);
+            frame = resolutionScopes.begin(type, qualifier, context);
 
             Binding<T> binding = matches.isEmpty() ? null : matches.get(0);
+
+            frame.attachBinding(binding);
 
             T instance = binding != null
                     ? binding.getProvider().provide(context)
@@ -760,14 +767,15 @@ public class InfuseInjector implements Injector {
 
             if (current != null && current.isOwner(owner)) {
                 current.retain();
-                return new ResolutionScopeHandle(state, current, false);
+                return new ResolutionScopeHandle(state, current, false, null);
             }
 
             ResolutionScope scope = ResolutionScope.object(owner);
             scope.store(owner.getClass(), owner);
+            ResolutionRequest ownerRequest = registerOwner(state, owner);
             state.stack.push(scope);
 
-            return new ResolutionScopeHandle(state, scope, true);
+            return new ResolutionScopeHandle(state, scope, true, ownerRequest);
         }
 
         private void exit(ResolutionScopeHandle handle) {
@@ -792,6 +800,10 @@ public class InfuseInjector implements Injector {
             if (scope.release()) {
                 stack.pop();
             }
+
+            if (handle.ownerRequest != null) {
+                unregisterOwner(state, handle.ownerRequest);
+            }
         }
 
         private Object lookup(Class<?> type) {
@@ -808,35 +820,38 @@ public class InfuseInjector implements Injector {
             return null;
         }
 
-        private ProvisionFrame begin(Class<?> type) {
+        private ProvisionFrame begin(Class<?> type, BindingQualifier qualifier, Context<?> context) {
             ResolutionScopeState state = currentState();
-            state.path.push(type);
+            ResolutionRequest request = new ResolutionRequest(type, qualifier, context);
+            ResolutionKey key = request.key();
+            int depth = state.inProgress.getOrDefault(key, 0);
 
-            int depth = state.inProgress.getOrDefault(type, 0) + 1;
-            state.inProgress.put(type, depth);
-
-            if (depth > 1) {
-                throwCycle(state, type);
+            if (depth > 0) {
+                throwCycle(state, request);
             }
 
-            return new ProvisionFrame(state.stack.peek(), type);
+            state.path.push(request);
+            state.inProgress.put(key, depth + 1);
+
+            return new ProvisionFrame(request);
         }
 
         private void end(ProvisionFrame frame) {
             ResolutionScopeState state = currentState();
-            Class<?> type = frame.type;
-            int depth = state.inProgress.getOrDefault(type, 0);
+            ResolutionRequest request = frame.request();
+            ResolutionKey key = request.key();
+            int depth = state.inProgress.getOrDefault(key, 0);
 
             if (depth <= 1) {
-                state.inProgress.remove(type);
+                state.inProgress.remove(key);
             } else {
-                state.inProgress.put(type, depth - 1);
+                state.inProgress.put(key, depth - 1);
             }
 
-            Class<?> finished = state.path.pop();
+            ResolutionRequest finished = state.path.pop();
 
-            if (finished != type) {
-                throw new IllegalStateException("Provision stack mismatch for " + type.getName());
+            if (finished != request) {
+                throw new IllegalStateException("Provision stack mismatch for " + request.describeType());
             }
         }
 
@@ -860,30 +875,99 @@ public class InfuseInjector implements Injector {
             return state.get();
         }
 
-        private void throwCycle(ResolutionScopeState state, Class<?> type) {
-            List<Class<?>> snapshot = new ArrayList<>(state.path);
-            StringBuilder builder = new StringBuilder();
+        private void throwCycle(ResolutionScopeState state, ResolutionRequest request) {
+            List<ResolutionRequest> ordered = new ArrayList<>(state.path);
+            Collections.reverse(ordered);
+            ordered.add(request);
 
-            for (int i = snapshot.size() - 1; i >= 0; i--) {
-                if (builder.length() > 0) {
-                    builder.append(" -> ");
+            ResolutionKey key = request.key();
+            int startIndex = -1;
+
+            for (int i = 0; i < ordered.size() - 1; i++) {
+                if (ordered.get(i).key().equals(key)) {
+                    startIndex = i;
+                    break;
                 }
-
-                builder.append(snapshot.get(i).getName());
             }
 
-            throw new IllegalStateException("Dependency cycle detected while resolving " + type.getName() + ": "
-                    + builder);
+            if (startIndex == -1) {
+                startIndex = ordered.size() - 1;
+            }
+
+            List<ResolutionRequest> cycle = ordered.subList(startIndex, ordered.size());
+            String lineSeparator = System.lineSeparator();
+            StringBuilder builder = new StringBuilder();
+
+            builder.append("Dependency cycle detected while resolving ")
+                    .append(request.describeType())
+                    .append(lineSeparator)
+                    .append("Cycle path:");
+
+            for (ResolutionRequest step : cycle) {
+                builder.append(lineSeparator).append(" - ").append(step.describe());
+            }
+
+            throw new IllegalStateException(builder.toString());
+        }
+
+        boolean isResolving(Class<?> type, BindingQualifier qualifier) {
+            ResolutionScopeState state = currentState();
+            return state.inProgress.containsKey(new ResolutionKey(type, qualifier));
+        }
+
+        void detectExistingCycle(Class<?> type, BindingQualifier qualifier, Context<?> context) {
+            ResolutionScopeState state = currentState();
+            ResolutionRequest request = new ResolutionRequest(type, qualifier, context);
+            throwCycle(state, request);
+        }
+
+        private ResolutionRequest registerOwner(ResolutionScopeState state, Object owner) {
+            if (owner == null) {
+                return null;
+            }
+
+            Class<?> ownerType = owner.getClass();
+            BindingQualifier qualifier = BindingQualifier.none();
+
+            ResolutionRequest current = state.path.peek();
+            if (current != null && current.matches(ownerType, qualifier)) {
+                return null;
+            }
+
+            ResolutionRequest request = new ResolutionRequest(ownerType, qualifier, null);
+            state.path.push(request);
+            state.inProgress.merge(request.key(), 1, Integer::sum);
+            return request;
+        }
+
+        private void unregisterOwner(ResolutionScopeState state, ResolutionRequest request) {
+            if (request == null) {
+                return;
+            }
+
+            ResolutionKey key = request.key();
+            int depth = state.inProgress.getOrDefault(key, 0);
+
+            if (depth <= 1) {
+                state.inProgress.remove(key);
+            } else {
+                state.inProgress.put(key, depth - 1);
+            }
+
+            ResolutionRequest finished = state.path.pop();
+            if (finished != request) {
+                throw new IllegalStateException("Provision stack mismatch while exiting " + request.describeType());
+            }
         }
 
         private static final class ResolutionScopeState {
             private final Deque<ResolutionScope> stack;
-            private final Map<Class<?>, Integer> inProgress;
-            private final Deque<Class<?>> path;
+            private final Map<ResolutionKey, Integer> inProgress;
+            private final Deque<ResolutionRequest> path;
 
             private ResolutionScopeState(Deque<ResolutionScope> stack,
-                                         Map<Class<?>, Integer> inProgress,
-                                         Deque<Class<?>> path) {
+                                         Map<ResolutionKey, Integer> inProgress,
+                                         Deque<ResolutionRequest> path) {
                 this.stack = stack;
                 this.inProgress = inProgress;
                 this.path = path;
@@ -899,29 +983,161 @@ public class InfuseInjector implements Injector {
                 return new ResolutionScopeState(stack, new HashMap<>(), new ArrayDeque<>());
             }
         }
-    }
 
-    private static final class ProvisionFrame {
-        private final ResolutionScope scope;
-        private final Class<?> type;
+        private static final class ResolutionKey {
+            private final Class<?> type;
+            private final BindingQualifier qualifier;
 
-        private ProvisionFrame(ResolutionScope scope, Class<?> type) {
-            this.scope = scope;
-            this.type = type;
+            private ResolutionKey(Class<?> type, BindingQualifier qualifier) {
+                this.type = type;
+                this.qualifier = qualifier;
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                if (this == o) {
+                    return true;
+                }
+
+                if (!(o instanceof ResolutionKey)) {
+                    return false;
+                }
+
+                ResolutionKey that = (ResolutionKey) o;
+                return Objects.equals(type, that.type) && Objects.equals(qualifier, that.qualifier);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(type, qualifier);
+            }
+        }
+
+        private static final class ResolutionRequest {
+            private final Class<?> type;
+            private final BindingQualifier qualifier;
+            private final ResolutionKey key;
+            private final RequestOrigin origin;
+            private @Nullable Binding<?> binding;
+
+            private ResolutionRequest(Class<?> type, BindingQualifier qualifier, @Nullable Context<?> context) {
+                this.type = type;
+                this.qualifier = qualifier;
+                this.key = new ResolutionKey(type, qualifier);
+                this.origin = context == null ? RequestOrigin.direct() : RequestOrigin.from(context);
+            }
+
+            private ResolutionKey key() {
+                return key;
+            }
+
+            private void attachBinding(@Nullable Binding<?> binding) {
+                this.binding = binding;
+            }
+
+            private boolean matches(Class<?> candidate, BindingQualifier qualifier) {
+                return type.equals(candidate) && Objects.equals(this.qualifier, qualifier);
+            }
+
+            private String describeType() {
+                if (qualifier == null || qualifier.isDefault()) {
+                    return type.getName();
+                }
+
+                return type.getName() + " " + qualifier;
+            }
+
+            private String describe() {
+                StringBuilder builder = new StringBuilder(describeType());
+
+                if (binding != null) {
+                    builder.append(" [scope=").append(binding.getScope()).append("]");
+
+                    if (binding.isCollectionContribution()) {
+                        builder.append(" [collection contribution]");
+                    }
+                } else {
+                    builder.append(" [implicit construction]");
+                }
+
+                if (origin != null) {
+                    builder.append(" requested at ").append(origin.describe());
+                }
+
+                return builder.toString();
+            }
+        }
+
+        private static final class RequestOrigin {
+            private final ElementType element;
+            private final @Nullable Class<?> ownerType;
+            private final @Nullable String memberName;
+
+            private RequestOrigin(ElementType element, @Nullable Class<?> ownerType, @Nullable String memberName) {
+                this.element = element;
+                this.ownerType = ownerType;
+                this.memberName = memberName;
+            }
+
+            private static RequestOrigin from(Context<?> context) {
+                return new RequestOrigin(context.getElement(), context.getType(), context.getName());
+            }
+
+            private static RequestOrigin direct() {
+                return new RequestOrigin(ElementType.TYPE, null, null);
+            }
+
+            private String describe() {
+                String owner = ownerType != null ? ownerType.getName() : "direct injector request";
+
+                switch (element) {
+                    case FIELD:
+                        return "field '" + memberName + "' of " + owner;
+                    case METHOD:
+                        return "method parameter '" + memberName + "' of " + owner;
+                    case CONSTRUCTOR:
+                        return "constructor parameter '" + memberName + "' of " + owner;
+                    case PARAMETER:
+                        return "parameter '" + memberName + "' of " + owner;
+                    case TYPE:
+                        return owner;
+                    default:
+                        return element.name().toLowerCase() + " '" + memberName + "' of " + owner;
+                }
+            }
         }
     }
 
-    private static final class ResolutionScopeHandle {
-        private final ResolutionScopes.ResolutionScopeState state;
-        private final ResolutionScope scope;
-        private final boolean newScope;
+    private static final class ProvisionFrame {
+        private final ResolutionScopes.ResolutionRequest request;
+
+        private ProvisionFrame(ResolutionScopes.ResolutionRequest request) {
+            this.request = request;
+        }
+
+        private void attachBinding(@Nullable Binding<?> binding) {
+            request.attachBinding(binding);
+        }
+
+        private ResolutionScopes.ResolutionRequest request() {
+            return request;
+        }
+    }
+
+        private static final class ResolutionScopeHandle {
+            private final ResolutionScopes.ResolutionScopeState state;
+            private final ResolutionScope scope;
+            private final boolean newScope;
+            private final @Nullable ResolutionScopes.ResolutionRequest ownerRequest;
 
         private ResolutionScopeHandle(ResolutionScopes.ResolutionScopeState state,
                                       ResolutionScope scope,
-                                      boolean newScope) {
+                                      boolean newScope,
+                                      @Nullable ResolutionScopes.ResolutionRequest ownerRequest) {
             this.state = state;
             this.scope = scope;
             this.newScope = newScope;
+            this.ownerRequest = ownerRequest;
         }
     }
 
