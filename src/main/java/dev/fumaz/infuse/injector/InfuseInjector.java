@@ -47,6 +47,7 @@ public class InfuseInjector implements Injector {
     private final @Nullable Injector parent;
     private final @NotNull List<Module> modules;
     private final @NotNull ConcurrentMap<Class<?>, InjectionPlan> injectionPlans;
+    private final @NotNull ConcurrentMap<Class<?>, ConstructorCache> constructorCaches;
     private final @NotNull BindingRegistry bindingRegistry;
     private final @NotNull List<Binding<?>> ownBindings;
     private final @NotNull ScopedInstanceRegistry scopedInstances;
@@ -56,6 +57,7 @@ public class InfuseInjector implements Injector {
         this.parent = parent;
         this.modules = modules;
         this.injectionPlans = new ConcurrentHashMap<>();
+        this.constructorCaches = new ConcurrentHashMap<>();
         this.bindingRegistry = new BindingRegistry();
         this.ownBindings = new ArrayList<>();
         this.scopedInstances = new ScopedInstanceRegistry();
@@ -454,99 +456,14 @@ public class InfuseInjector implements Injector {
         return bindings.get(0);
     }
 
-    private <T> @Nullable Constructor<T> findInjectableConstructor(@NotNull Class<T> type) {
-        Constructor<T> injectableConstructor = null;
-
-        for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-            if (constructor.isAnnotationPresent(Inject.class)) {
-                if (injectableConstructor != null && injectableConstructor.isAnnotationPresent(Inject.class)) {
-                    throw new IllegalArgumentException("Multiple injectable constructors found for type " + type);
-                }
-
-                injectableConstructor = (Constructor<T>) constructor;
-            }
-
-            if (constructor.getParameterCount() == 0 && injectableConstructor == null) {
-                injectableConstructor = (Constructor<T>) constructor;
-            }
-        }
-
-        return injectableConstructor;
-    }
-
     public <T> Constructor<T> findSuitableConstructor(Class<T> clazz, Object... args) {
-        Constructor<?>[] constructors = clazz.getDeclaredConstructors();
-        Constructor<T> bestMatch = null;
-        int bestMatchScore = Integer.MAX_VALUE;
-
-        for (Constructor<?> constructor : constructors) {
-            Class<?>[] parameterTypes = constructor.getParameterTypes();
-
-            if (parameterTypes.length != args.length) {
-                continue;
-            }
-
-            int matchScore = 0;
-            boolean suitable = true;
-
-            for (int i = 0; i < args.length; i++) {
-                Class<?> expectedType = parameterTypes[i];
-
-                if (args[i] == null) {
-                    matchScore += 0;
-                } else {
-                    Class<?> actualType = args[i].getClass();
-
-                    if (expectedType.isAssignableFrom(actualType)) {
-                        int distance = getClassDistance(expectedType, actualType);
-                        if (distance != -1) {
-                            matchScore += distance;
-                        } else {
-                            suitable = false;
-                            break;
-                        }
-                    } else {
-                        suitable = false;
-                        break;
-                    }
-                }
-            }
-
-            if (suitable && matchScore < bestMatchScore) {
-                bestMatch = (Constructor<T>) constructor;
-                bestMatchScore = matchScore;
-            }
-        }
-
-        return bestMatch;
+        ConstructorCache cache = constructorCaches.computeIfAbsent(clazz, ConstructorCache::new);
+        return cache.findSuitableConstructor(this, args);
     }
 
     private <T> Constructor<T> resolveConstructor(Class<T> type, Object... args) {
-        Constructor<T> injectable = findInjectableConstructor(type);
-
-        if (injectable != null && injectable.isAnnotationPresent(Inject.class)) {
-            requireArgumentsCompatible(type, injectable, args);
-            return injectable;
-        }
-
-        if (injectable != null && !injectable.isAnnotationPresent(Inject.class)) {
-            if (args.length == 0 || isConstructorCompatible(injectable, args)) {
-                return injectable;
-            }
-        }
-
-        Constructor<T> heuristic = findSuitableConstructor(type, args);
-
-        if (heuristic != null) {
-            return heuristic;
-        }
-
-        if (injectable != null && injectable.isAnnotationPresent(Inject.class)) {
-            throw new IllegalArgumentException("Annotated constructor for " + type.getName()
-                    + " cannot be satisfied by the provided arguments.");
-        }
-
-        throw new RuntimeException("No suitable constructor found for " + type.getName());
+        ConstructorCache cache = constructorCaches.computeIfAbsent(type, ConstructorCache::new);
+        return cache.resolve(this, args);
     }
 
     private boolean isConstructorCompatible(Constructor<?> constructor, Object... args) {
@@ -1257,6 +1174,190 @@ public class InfuseInjector implements Injector {
 
         private int priority() {
             return priority;
+        }
+    }
+
+    private static final class ConstructorCache {
+        private static final Constructor<?>[] EMPTY_CONSTRUCTORS = new Constructor<?>[0];
+
+        private final Class<?> type;
+        private final Constructor<?> injectable;
+        private final Map<Integer, Constructor<?>[]> constructorsByArity;
+        private final ConcurrentMap<ConstructorArgsKey, Constructor<?>> heuristicCache;
+
+        private ConstructorCache(Class<?> type) {
+            this.type = type;
+            this.heuristicCache = new ConcurrentHashMap<>();
+
+            Constructor<?>[] declaredConstructors = type.getDeclaredConstructors();
+            Constructor<?> injectableCandidate = null;
+            Constructor<?> zeroArgCandidate = null;
+            Map<Integer, List<Constructor<?>>> groupedByArity = new HashMap<>();
+
+            for (Constructor<?> constructor : declaredConstructors) {
+                groupedByArity.computeIfAbsent(constructor.getParameterCount(), key -> new ArrayList<>())
+                        .add(constructor);
+
+                if (constructor.isAnnotationPresent(Inject.class)) {
+                    if (injectableCandidate != null && injectableCandidate.isAnnotationPresent(Inject.class)) {
+                        throw new IllegalArgumentException(
+                                "Multiple injectable constructors found for type " + type);
+                    }
+
+                    injectableCandidate = constructor;
+                }
+
+                if (constructor.getParameterCount() == 0 && zeroArgCandidate == null) {
+                    zeroArgCandidate = constructor;
+                }
+            }
+
+            this.injectable = injectableCandidate != null ? injectableCandidate : zeroArgCandidate;
+
+            Map<Integer, Constructor<?>[]> arityMap = new HashMap<>(groupedByArity.size());
+            for (Map.Entry<Integer, List<Constructor<?>>> entry : groupedByArity.entrySet()) {
+                arityMap.put(entry.getKey(), entry.getValue().toArray(new Constructor<?>[0]));
+            }
+
+            this.constructorsByArity = arityMap;
+        }
+
+        @SuppressWarnings("unchecked")
+        private <T> Constructor<T> resolve(InfuseInjector injector, Object... args) {
+            Class<T> requestedType = (Class<T>) type;
+            Constructor<?> candidate = injectable;
+
+            if (candidate != null) {
+                if (candidate.isAnnotationPresent(Inject.class)) {
+                    injector.requireArgumentsCompatible(requestedType, candidate, args);
+                    return (Constructor<T>) candidate;
+                }
+
+                if (args.length == 0 || injector.isConstructorCompatible(candidate, args)) {
+                    return (Constructor<T>) candidate;
+                }
+            }
+
+            Constructor<?> heuristic = resolveHeuristic(injector, args);
+
+            if (heuristic != null) {
+                return (Constructor<T>) heuristic;
+            }
+
+            if (candidate != null && candidate.isAnnotationPresent(Inject.class)) {
+                throw new IllegalArgumentException("Annotated constructor for " + requestedType.getName()
+                        + " cannot be satisfied by the provided arguments.");
+            }
+
+            throw new RuntimeException("No suitable constructor found for " + requestedType.getName());
+        }
+
+        @SuppressWarnings("unchecked")
+        private <T> Constructor<T> findSuitableConstructor(InfuseInjector injector, Object... args) {
+            Constructor<?> constructor = resolveHeuristic(injector, args);
+            return constructor == null ? null : (Constructor<T>) constructor;
+        }
+
+        private Constructor<?> resolveHeuristic(InfuseInjector injector, Object... args) {
+            ConstructorArgsKey key = new ConstructorArgsKey(args);
+            Constructor<?> cached = heuristicCache.get(key);
+
+            if (cached != null) {
+                return cached;
+            }
+
+            Constructor<?>[] candidates = constructorsByArity.getOrDefault(args.length, EMPTY_CONSTRUCTORS);
+            Constructor<?> bestMatch = null;
+            int bestMatchScore = Integer.MAX_VALUE;
+
+            for (Constructor<?> constructor : candidates) {
+                int score = computeMatchScore(injector, constructor, args);
+
+                if (score == -1) {
+                    continue;
+                }
+
+                if (score < bestMatchScore) {
+                    bestMatch = constructor;
+                    bestMatchScore = score;
+                }
+            }
+
+            if (bestMatch != null) {
+                Constructor<?> previous = heuristicCache.putIfAbsent(key, bestMatch);
+                return previous != null ? previous : bestMatch;
+            }
+
+            return null;
+        }
+
+        private int computeMatchScore(InfuseInjector injector, Constructor<?> constructor, Object... args) {
+            Class<?>[] parameterTypes = constructor.getParameterTypes();
+
+            if (parameterTypes.length != args.length) {
+                return -1;
+            }
+
+            int matchScore = 0;
+
+            for (int i = 0; i < args.length; i++) {
+                Object arg = args[i];
+
+                if (arg == null) {
+                    continue;
+                }
+
+                Class<?> expectedType = parameterTypes[i];
+                Class<?> actualType = arg.getClass();
+
+                if (!expectedType.isAssignableFrom(actualType)) {
+                    return -1;
+                }
+
+                int distance = injector.getClassDistance(expectedType, actualType);
+
+                if (distance == -1) {
+                    return -1;
+                }
+
+                matchScore += distance;
+            }
+
+            return matchScore;
+        }
+
+        private static final class ConstructorArgsKey {
+            private final Class<?>[] argumentTypes;
+            private final int hash;
+
+            private ConstructorArgsKey(Object... args) {
+                this.argumentTypes = new Class<?>[args.length];
+
+                for (int i = 0; i < args.length; i++) {
+                    this.argumentTypes[i] = args[i] == null ? null : args[i].getClass();
+                }
+
+                this.hash = Arrays.hashCode(argumentTypes);
+            }
+
+            @Override
+            public boolean equals(Object obj) {
+                if (this == obj) {
+                    return true;
+                }
+
+                if (!(obj instanceof ConstructorArgsKey)) {
+                    return false;
+                }
+
+                ConstructorArgsKey other = (ConstructorArgsKey) obj;
+                return Arrays.equals(argumentTypes, other.argumentTypes);
+            }
+
+            @Override
+            public int hashCode() {
+                return hash;
+            }
         }
     }
 
