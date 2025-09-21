@@ -1,5 +1,24 @@
 package dev.fumaz.infuse.injector;
 
+import java.lang.annotation.Annotation;
+import java.lang.annotation.ElementType;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Logger;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import dev.fumaz.infuse.annotation.Inject;
 import dev.fumaz.infuse.annotation.PostConstruct;
 import dev.fumaz.infuse.annotation.PostInject;
@@ -10,201 +29,132 @@ import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.InstanceProvider;
 import dev.fumaz.infuse.provider.Provider;
 import dev.fumaz.infuse.provider.SingletonProvider;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
-import java.lang.annotation.Annotation;
-import java.lang.annotation.ElementType;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class InfuseInjector implements Injector {
 
     private final @Nullable Injector parent;
     private final @NotNull List<Module> modules;
-    private final @NotNull Map<Class<?>, Object> cache;
+    private final @NotNull Map<Class<?>, InjectionPlan> injectionPlans;
+    private final @NotNull Map<Class<?>, Binding<?>> bindings;
+    private final @NotNull ResolutionScopes resolutionScopes;
 
     public InfuseInjector(@Nullable Injector parent, @NotNull List<Module> modules) {
         this.parent = parent;
         this.modules = modules;
-        this.cache = new HashMap<>();
+        this.injectionPlans = new HashMap<>();
+        this.bindings = new HashMap<>();
+        this.resolutionScopes = new ResolutionScopes(this);
 
-        modules.forEach(Module::configure);
+        for (Module module : modules) {
+            module.configure();
+            
+            for (Binding<?> binding : module.getBindings()) {
+                bindings.put(binding.getType(), binding);
+            }
+        }
 
-        getOwnBindings().forEach(binding -> {
-            if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
-                return;
+        bindings.put(Injector.class, new Binding<>(Injector.class, new InstanceProvider<>(this)));
+        bindings.put(Logger.class, new Binding<>(Logger.class, (context) -> Logger.getLogger(context.getType().getSimpleName())));
+
+        List<Object> eagerSingletons = new ArrayList<>();
+        for (Binding<?> binding : getOwnBindings()) {
+            Provider<?> provider = binding.getProvider();
+            Object instance = null;
+
+            if (provider instanceof SingletonProvider && ((SingletonProvider<?>) provider).isEager()) {
+                instance = ((SingletonProvider<?>) provider).provideWithoutInjecting(
+                        new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
+            } else if (provider instanceof InstanceProvider) {
+                instance = ((InstanceProvider<?>) provider).provideWithoutInjecting(
+                        new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
             }
 
-            SingletonProvider<?> provider = (SingletonProvider<?>) binding.getProvider();
-
-            if (!provider.isEager()) {
-                return;
+            if (instance != null) {
+                eagerSingletons.add(instance);
             }
+        }
 
-            try {
-                provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
-            } catch (Exception e) {
-                System.err.println("Failed to eagerly initialize " + binding.getType().getName());
-                throw e;
-            }
-        });
+        for (Object singleton : eagerSingletons) {
+            injectVariables(singleton);
+        }
 
+        List<Method> postInjectMethods = new ArrayList<>();
+        for (Object singleton : eagerSingletons) {
+            postInjectMethods.addAll(getInjectionPlan(singleton.getClass()).getPostInjectMethods());
+        }
 
-        getOwnBindings().forEach(binding -> {
-            if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
-                return;
-            }
+        postInjectMethods.sort(Comparator.comparingInt(m -> m.getAnnotation(PostInject.class).priority()));
 
-            SingletonProvider<?> provider = (SingletonProvider<?>) binding.getProvider();
-
-            if (!provider.isEager()) {
-                return;
-            }
-
-            try {
-                injectVariables(provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0])));
-            } catch (Exception e) {
-                System.err.println("Failed to eagerly inject variables in " + binding.getType().getName());
-                throw e;
-            }
-        });
-
-        getOwnBindings().forEach(binding -> {
-            if (!(binding.getProvider() instanceof InstanceProvider<?>)) {
-                return;
-            }
-
-            InstanceProvider<?> provider = (InstanceProvider<?>) binding.getProvider();
-
-            try {
-                Object object = provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
-
-                if (object == null) {
-                    return;
-                }
-
-                injectVariables(object);
-            } catch (Exception e) {
-                System.err.println("Failed to eagerly initialize " + binding.getType().getName());
-                throw e;
-            }
-        });
-
-        List<ObjectWithMethod> methods = new ArrayList<>();
-
-        getOwnBindings().forEach(binding -> {
-            if (!(binding.getProvider() instanceof SingletonProvider<?>)) {
-                return;
-            }
-
-            SingletonProvider<?> provider = (SingletonProvider<?>) binding.getProvider();
-
-            if (!provider.isEager()) {
-                return;
-            }
-
-            Object object = provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
-            getMethodsAnnotatedWith(object.getClass(), PostInject.class)
-                    .forEach(method -> methods.add(new ObjectWithMethod(object, method)));
-        });
-
-        getOwnBindings().forEach(binding -> {
-            if (!(binding.getProvider() instanceof InstanceProvider<?>)) {
-                return;
-            }
-
-            InstanceProvider<?> provider = (InstanceProvider<?>) binding.getProvider();
-            Object object = provider.provideWithoutInjecting(new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
-
-            if (object == null) {
-                return;
-            }
-
-            getMethodsAnnotatedWith(object.getClass(), PostInject.class)
-                    .forEach(method -> methods.add(new ObjectWithMethod(object, method)));
-        });
-
-        methods.stream()
-                .sorted(Comparator.comparing(method -> method.getMethod().getAnnotation(PostInject.class).priority()))
-                .forEach(method -> {
+        for (Method method : postInjectMethods) {
+            for (Object singleton : eagerSingletons) {
+                if (method.getDeclaringClass().isInstance(singleton)) {
                     try {
-                        injectMethod(method.getObject(), method.getMethod());
+                        injectMethod(singleton, method);
                     } catch (Exception e) {
-                        System.err.println("Failed to eagerly inject method " + method.getMethod().getName() + " in " + method.getObject().getClass().getName());
+                        System.err.println("Failed to eagerly inject method " + method.getName() + " in "
+                                + singleton.getClass().getName());
                         throw e;
                     }
-                });
+                }
+            }
+        }
     }
 
     public void inject(@NotNull Object object) {
+        ResolutionScopeHandle scope = resolutionScopes.enter(object);
+
+        try {
+            injectWithinScope(object);
+        } finally {
+            resolutionScopes.exit(scope);
+        }
+    }
+
+    private void injectWithinScope(@NotNull Object object) {
         injectVariables(object);
         postInject(object);
     }
 
     @Override
     public <T> T provide(@NotNull Class<T> type, @NotNull Context<?> context) {
-        try {
-            cache.put(context.getObject().getClass(), context.getObject());
+        ResolutionScopeHandle ownerScope = resolutionScopes.enter(context.getObject());
+        ProvisionFrame frame = null;
 
-            if (cache.containsKey(type)) {
-                return (T) cache.get(type);
+        try {
+            Object existing = resolutionScopes.lookup(type);
+
+            if (existing != null) {
+                return type.cast(existing);
             }
+
+            frame = resolutionScopes.begin(type);
 
             Binding<T> binding = getBindingOrNull(type);
+            T instance = binding != null
+                    ? binding.getProvider().provide(context)
+                    : construct(type);
 
-            if (binding != null) {
-                T t = binding.getProvider().provide(context);
-                cache.remove(context.getObject().getClass());
+            resolutionScopes.record(type, instance);
 
-                return t;
-            }
-
-            T t = construct(type);
-            cache.remove(context.getObject().getClass());
-
-            return t;
+            return instance;
         } catch (Exception e) {
             System.err.println("Failed to provide " + type.getName());
             throw e;
+        } finally {
+            if (frame != null) {
+                resolutionScopes.end(frame);
+            }
+
+            resolutionScopes.exit(ownerScope);
         }
     }
 
     @Override
     public <T> @Nullable T provide(@NotNull Class<T> type, @NotNull Object calling) {
-        try {
-            cache.put(calling.getClass(), calling);
+        Context<?> context = new Context<>(calling.getClass(), calling, this, ElementType.FIELD, "field",
+                new Annotation[0]);
 
-            if (cache.containsKey(type)) {
-                return (T) cache.get(type);
-            }
-
-            Binding<T> binding = getBindingOrNull(type);
-
-            if (binding != null) {
-                T t = binding.getProvider().provide(this, calling);
-                cache.remove(calling.getClass());
-
-                return t;
-            }
-
-            T t = construct(type);
-            cache.remove(calling.getClass());
-
-            return t;
-        } catch (Exception e) {
-            System.err.println("Failed to provide " + type.getName());
-            throw e;
-        }
+        return provide(type, context);
     }
 
     @Override
@@ -220,8 +170,14 @@ public class InfuseInjector implements Injector {
         try {
             T t = constructor.newInstance(getConstructorArguments(constructor, args));
 
-            postConstruct(t);
-            inject(t);
+            ResolutionScopeHandle scope = resolutionScopes.enter(t);
+
+            try {
+                postConstruct(t);
+                injectWithinScope(t);
+            } finally {
+                resolutionScopes.exit(scope);
+            }
 
             return t;
         } catch (Exception e) {
@@ -243,7 +199,13 @@ public class InfuseInjector implements Injector {
         try {
             T t = constructor.newInstance(getConstructorArguments(constructor, args));
 
-            postConstruct(t);
+            ResolutionScopeHandle scope = resolutionScopes.enter(t);
+
+            try {
+                postConstruct(t);
+            } finally {
+                resolutionScopes.exit(scope);
+            }
 
             return t;
         } catch (Exception e) {
@@ -256,7 +218,8 @@ public class InfuseInjector implements Injector {
     @Override
     public void destroy() {
         getBindings().forEach(binding -> {
-            preDestroy(binding.getProvider().provide(new Context<>(binding.getType(), this, this, ElementType.FIELD, "field", new Annotation[0])));
+            preDestroy(binding.getProvider().provide(
+                    new Context<>(binding.getType(), this, this, ElementType.FIELD, "field", new Annotation[0])));
         });
     }
 
@@ -290,54 +253,51 @@ public class InfuseInjector implements Injector {
 
     @Override
     public @NotNull List<Binding<?>> getBindings() {
-        List<Binding<?>> bindings = new ArrayList<>();
-
-        bindings.add(new Binding<>(Injector.class, new InstanceProvider<>(this)));
-        bindings.add(new Binding<>(Logger.class, (context) -> Logger.getLogger(context.getType().getSimpleName())));
-
-        for (Module module : getModules()) {
-            for (Binding<?> binding : module.getBindings()) {
-                bindings.removeIf(binding::equals);
-                bindings.add(binding);
-            }
+        List<Binding<?>> allBindings = new ArrayList<>();
+        if (parent != null) {
+            allBindings.addAll(parent.getBindings());
         }
-
-        return bindings;
+        allBindings.addAll(getOwnBindings());
+        return allBindings;
     }
 
     @Override
-    public @NotNull <T> List<Binding<? extends T>> getBindings(Class<T> type) {
-        return getBindings().stream()
-                .filter(binding -> type.isAssignableFrom(binding.getType()) || binding.getType().isAssignableFrom(type))
-                .map(binding -> (Binding<? extends T>) binding)
-                .collect(Collectors.toList());
+    public <T> @NotNull List<Binding<? extends T>> getBindings(Class<T> type) {
+        List<Binding<? extends T>> matchingBindings = new ArrayList<>();
+        for (Binding<?> binding : getBindings()) {
+            if (type.isAssignableFrom(binding.getType())) {
+                matchingBindings.add((Binding<? extends T>) binding);
+            }
+        }
+        return matchingBindings;
     }
 
     private List<Binding<?>> getOwnBindings() {
-        List<Binding<?>> bindings = new ArrayList<>();
-
-        for (Module module : modules) {
-            for (Binding<?> binding : module.getBindings()) {
-                bindings.removeIf(binding::equals);
-                bindings.add(binding);
-            }
-        }
-
-        return bindings;
+        return new ArrayList<>(bindings.values());
     }
 
     public <T> @NotNull Binding<T> getBindingOrThrow(@NotNull Class<T> type) {
-        return (Binding<T>) getBindings().stream()
-                .filter(binding -> binding.getType().isAssignableFrom(type) || type.isAssignableFrom(binding.getType()))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("No binding found for type " + type));
+        Binding<T> binding = getBindingOrNull(type);
+
+        if (binding == null) {
+            throw new RuntimeException("No binding found for " + type.getName());
+        }
+
+        return binding;
     }
 
     public <T> @Nullable Binding<T> getBindingOrNull(@NotNull Class<T> type) {
-        return (Binding<T>) getBindings().stream()
-                .filter(binding -> binding.getType().isAssignableFrom(type) || type.isAssignableFrom(binding.getType()))
-                .findFirst()
-                .orElse(null);
+        Binding<?> binding = bindings.get(type);
+
+        if (binding != null) {
+            return (Binding<T>) binding;
+        }
+
+        if (parent != null) {
+            return (parent instanceof InfuseInjector) ? ((InfuseInjector) parent).getBindingOrNull(type) : null;
+        }
+
+        return null;
     }
 
     private <T> @Nullable Constructor<T> findInjectableConstructor(@NotNull Class<T> type) {
@@ -424,114 +384,371 @@ public class InfuseInjector implements Injector {
     }
 
     private @NotNull Object[] getConstructorArguments(@NotNull Constructor<?> constructor, Object... provided) {
-        Object[] args = new Object[constructor.getParameterCount()];
+        return Arrays.stream(constructor.getParameters())
+                .map(parameter -> {
+                    for (Object arg : provided) {
+                        if (parameter.getType().isInstance(arg)) {
+                            return arg;
+                        }
+                    }
 
-        for (int i = 0; i < args.length; i++) {
-            Class<?> type = constructor.getParameterTypes()[i];
-            Annotation[] annotations = constructor.getParameterAnnotations()[i];
-
-            if (provided.length == 0 || provided.length <= i || constructor.getParameters()[i].isAnnotationPresent(Inject.class)) {
-                args[i] = provide(type, new Context<>(constructor.getDeclaringClass(), this, this, ElementType.CONSTRUCTOR, constructor.getParameters()[i].getName(), annotations));
-            } else {
-                args[i] = provided[i];
-            }
-        }
-
-        return args;
-    }
-
-    private <T> List<Field> getAllFields(Class<T> type) {
-        List<Field> fields = new ArrayList<>(Arrays.asList(type.getDeclaredFields()));
-
-        if (type.getSuperclass() != null) {
-            fields.addAll(getAllFields(type.getSuperclass()));
-        }
-
-        return fields;
-    }
-
-    private <T> List<Method> getAllMethods(Class<T> type) {
-        List<Method> methods = new ArrayList<>(Arrays.asList(type.getDeclaredMethods()));
-
-        if (type.getSuperclass() != null) {
-            methods.addAll(getAllMethods(type.getSuperclass()));
-        }
-
-        return methods;
+                    return provide(parameter.getType(), new Context<>(constructor.getDeclaringClass(), this, this,
+                            ElementType.CONSTRUCTOR, parameter.getName(), parameter.getAnnotations()));
+                })
+                .toArray();
     }
 
     private void injectVariables(Object object) {
-        List<Binding<?>> bindings = getBindings();
-
-        for (Field field : getAllFields(object.getClass())) {
-            if (field.isAnnotationPresent(Inject.class)) {
-                field.setAccessible(true);
-
-                try {
-                    field.set(object, provide(field.getType(), new Context<>(object.getClass(), object, this, ElementType.FIELD, field.getName(), field.getAnnotations())));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        }
+        getInjectionPlan(object.getClass())
+                .getInjectableFields()
+                .forEach(field -> {
+                    try {
+                        field.setAccessible(true);
+                        field.set(object, provide(field.getType(), new Context<>(object.getClass(), object, this,
+                                ElementType.FIELD, field.getName(), field.getAnnotations())));
+                    } catch (Exception e) {
+                        System.err.println(
+                                "Failed to inject field " + field.getName() + " in " + object.getClass().getName());
+                        throw new RuntimeException(e);
+                    }
+                });
     }
 
     private void preDestroy(Object object) {
-        getMethodsAnnotatedWith(object.getClass(), PreDestroy.class)
-                .stream()
-                .sorted(Comparator.comparing(method -> method.getAnnotation(PreDestroy.class).priority()))
-                .forEach(method -> injectMethod(object, method));
+        getInjectionPlan(object.getClass())
+                .getPreDestroyMethods()
+                .forEach(method -> {
+                    try {
+                        injectMethod(object, method);
+                    } catch (Exception e) {
+                        System.err.println("Failed to call pre-destroy method " + method.getName() + " in "
+                                + object.getClass().getName());
+                        throw new RuntimeException(e);
+                    }
+                });
     }
 
     private void postInject(Object object) {
-        getMethodsAnnotatedWith(object.getClass(), PostInject.class)
-                .stream()
-                .sorted(Comparator.comparing(method -> method.getAnnotation(PostInject.class).priority()))
-                .forEach(method -> injectMethod(object, method));
+        getInjectionPlan(object.getClass())
+                .getPostInjectMethods()
+                .forEach(method -> {
+                    try {
+                        injectMethod(object, method);
+                    } catch (Exception e) {
+                        System.err.println("Failed to call post-inject method " + method.getName() + " in "
+                                + object.getClass().getName());
+                        throw new RuntimeException(e);
+                    }
+                });
     }
 
     private void postConstruct(Object object) {
-        getMethodsAnnotatedWith(object.getClass(), PostConstruct.class)
-                .stream()
-                .sorted(Comparator.comparing(method -> method.getAnnotation(PostConstruct.class).priority()))
-                .forEach(method -> injectMethod(object, method));
-    }
-
-    private List<Method> getMethodsAnnotatedWith(Class<?> type, Class<? extends Annotation> annotation) {
-        return getAllMethods(type)
-                .stream()
-                .filter(method -> method.isAnnotationPresent(annotation))
-                .collect(Collectors.toList());
+        getInjectionPlan(object.getClass())
+                .getPostConstructMethods()
+                .forEach(method -> {
+                    try {
+                        injectMethod(object, method);
+                    } catch (Exception e) {
+                        System.err.println("Failed to call post-construct method " + method.getName() + " in "
+                                + object.getClass().getName());
+                        throw new RuntimeException(e);
+                    }
+                });
     }
 
     private void injectMethod(Object object, Method method) {
-        method.setAccessible(true);
-
         try {
-            method.invoke(object);
+            method.setAccessible(true);
+            method.invoke(object, getMethodArguments(method));
         } catch (Exception e) {
+            System.err.println("Failed to inject method " + method.getName() + " in " + object.getClass().getName());
             throw new RuntimeException(e);
         }
     }
 
-    private static class ObjectWithMethod {
+    private InjectionPlan getInjectionPlan(Class<?> clazz) {
+        return injectionPlans.computeIfAbsent(clazz, InjectionPlan::new);
+    }
 
-        private final Object object;
-        private final Method method;
+    private @NotNull Object[] getMethodArguments(@NotNull Method method) {
+        return Arrays.stream(method.getParameters())
+                .map(parameter -> provide(parameter.getType(),
+                        new Context<>(method.getDeclaringClass(), this, this, ElementType.METHOD, parameter.getName(),
+                                parameter.getAnnotations())))
+                .toArray();
+    }
 
-        public ObjectWithMethod(Object object, Method method) {
-            this.object = object;
-            this.method = method;
+    private static final class ResolutionScopes {
+
+        private final Deque<ResolutionScope> stack = new ArrayDeque<>();
+        private final Map<Class<?>, Integer> inProgress = new HashMap<>();
+        private final Deque<Class<?>> path = new ArrayDeque<>();
+
+        private ResolutionScopes(InfuseInjector root) {
+            ResolutionScope scope = ResolutionScope.root(root);
+            scope.store(root.getClass(), root);
+            scope.store(Injector.class, root);
+            stack.push(scope);
         }
 
-        public Object getObject() {
-            return object;
+        private ResolutionScopeHandle enter(Object owner) {
+            ResolutionScope current = stack.peek();
+
+            if (current != null && current.isOwner(owner)) {
+                current.retain();
+                return new ResolutionScopeHandle(current, false);
+            }
+
+            ResolutionScope scope = ResolutionScope.object(owner);
+            scope.store(owner.getClass(), owner);
+            stack.push(scope);
+
+            return new ResolutionScopeHandle(scope, true);
         }
 
-        public Method getMethod() {
-            return method;
+        private void exit(ResolutionScopeHandle handle) {
+            ResolutionScope scope = handle.scope;
+
+            if (scope.isRoot()) {
+                return;
+            }
+
+            if (!handle.newScope) {
+                scope.release();
+                return;
+            }
+
+            if (stack.peek() != scope) {
+                throw new IllegalStateException("Scope mismatch while exiting dependency scope");
+            }
+
+            if (scope.release()) {
+                stack.pop();
+            }
         }
 
+        private Object lookup(Class<?> type) {
+            for (ResolutionScope scope : stack) {
+                Object candidate = scope.lookup(type);
+
+                if (candidate != null) {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        private ProvisionFrame begin(Class<?> type) {
+            path.push(type);
+
+            int depth = inProgress.getOrDefault(type, 0) + 1;
+            inProgress.put(type, depth);
+
+            if (depth > 1) {
+                throwCycle(type);
+            }
+
+            return new ProvisionFrame(stack.peek(), type);
+        }
+
+        private void end(ProvisionFrame frame) {
+            Class<?> type = frame.type;
+            int depth = inProgress.getOrDefault(type, 0);
+
+            if (depth <= 1) {
+                inProgress.remove(type);
+            } else {
+                inProgress.put(type, depth - 1);
+            }
+
+            Class<?> finished = path.pop();
+
+            if (finished != type) {
+                throw new IllegalStateException("Provision stack mismatch for " + type.getName());
+            }
+        }
+
+        private void record(Class<?> requestedType, @Nullable Object instance) {
+            if (instance == null) {
+                return;
+            }
+
+            ResolutionScope scope = stack.peek();
+
+            if (scope == null) {
+                throw new IllegalStateException("No active scope while recording instance for " + requestedType.getName());
+            }
+
+            scope.store(requestedType, instance);
+            scope.store(instance.getClass(), instance);
+        }
+
+        private void throwCycle(Class<?> type) {
+            List<Class<?>> snapshot = new ArrayList<>(path);
+            StringBuilder builder = new StringBuilder();
+
+            for (int i = snapshot.size() - 1; i >= 0; i--) {
+                if (builder.length() > 0) {
+                    builder.append(" -> ");
+                }
+
+                builder.append(snapshot.get(i).getName());
+            }
+
+            throw new IllegalStateException("Dependency cycle detected while resolving " + type.getName() + ": "
+                    + builder);
+        }
+    }
+
+    private static final class ProvisionFrame {
+        private final ResolutionScope scope;
+        private final Class<?> type;
+
+        private ProvisionFrame(ResolutionScope scope, Class<?> type) {
+            this.scope = scope;
+            this.type = type;
+        }
+    }
+
+    private static final class ResolutionScopeHandle {
+        private final ResolutionScope scope;
+        private final boolean newScope;
+
+        private ResolutionScopeHandle(ResolutionScope scope, boolean newScope) {
+            this.scope = scope;
+            this.newScope = newScope;
+        }
+    }
+
+    private static final class ResolutionScope {
+        private final Object owner;
+        private final boolean root;
+        private final Map<Class<?>, Object> instances = new LinkedHashMap<>();
+        private int depth;
+
+        private ResolutionScope(Object owner, boolean root) {
+            this.owner = owner;
+            this.root = root;
+            this.depth = root ? Integer.MAX_VALUE : 1;
+        }
+
+        private static ResolutionScope root(Object owner) {
+            return new ResolutionScope(owner, true);
+        }
+
+        private static ResolutionScope object(Object owner) {
+            return new ResolutionScope(owner, false);
+        }
+
+        private boolean isRoot() {
+            return root;
+        }
+
+        private boolean isOwner(Object candidate) {
+            return owner == candidate;
+        }
+
+        private void retain() {
+            if (root) {
+                return;
+            }
+
+            depth++;
+        }
+
+        private boolean release() {
+            if (root) {
+                return false;
+            }
+
+            depth--;
+
+            if (depth < 0) {
+                throw new IllegalStateException("Scope depth became negative for " + owner.getClass().getName());
+            }
+
+            return depth == 0;
+        }
+
+        private void store(Class<?> type, Object instance) {
+            instances.put(type, instance);
+        }
+
+        private Object lookup(Class<?> type) {
+            Object direct = instances.get(type);
+
+            if (direct != null && type.isInstance(direct)) {
+                return direct;
+            }
+
+            for (Object candidate : instances.values()) {
+                if (candidate != null && type.isInstance(candidate)) {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+    }
+
+    private static class InjectionPlan {
+        private final List<Field> injectableFields;
+        private final List<Method> injectableMethods;
+        private final List<Method> postConstructMethods;
+        private final List<Method> preDestroyMethods;
+        private final List<Method> postInjectMethods;
+
+        public InjectionPlan(Class<?> clazz) {
+            this.injectableFields = new ArrayList<>();
+            this.injectableMethods = new ArrayList<>();
+            this.postConstructMethods = new ArrayList<>();
+            this.preDestroyMethods = new ArrayList<>();
+            this.postInjectMethods = new ArrayList<>();
+
+            for (Class<?> current = clazz; current != null; current = current.getSuperclass()) {
+                for (Field field : current.getDeclaredFields()) {
+                    if (field.isAnnotationPresent(Inject.class)) {
+                        injectableFields.add(field);
+                    }
+                }
+
+                for (Method method : current.getDeclaredMethods()) {
+                    if (method.isAnnotationPresent(Inject.class)) {
+                        injectableMethods.add(method);
+                    } else if (method.isAnnotationPresent(PostConstruct.class)) {
+                        postConstructMethods.add(method);
+                    } else if (method.isAnnotationPresent(PreDestroy.class)) {
+                        preDestroyMethods.add(method);
+                    } else if (method.isAnnotationPresent(PostInject.class)) {
+                        postInjectMethods.add(method);
+                    }
+                }
+            }
+
+            postConstructMethods.sort(Comparator.comparingInt(m -> m.getAnnotation(PostConstruct.class).priority()));
+            postInjectMethods.sort(Comparator.comparingInt(m -> m.getAnnotation(PostInject.class).priority()));
+        }
+
+        public List<Field> getInjectableFields() {
+            return injectableFields;
+        }
+
+        public List<Method> getInjectableMethods() {
+            return injectableMethods;
+        }
+
+        public List<Method> getPostConstructMethods() {
+            return postConstructMethods;
+        }
+
+        public List<Method> getPreDestroyMethods() {
+            return preDestroyMethods;
+        }
+
+        public List<Method> getPostInjectMethods() {
+            return postInjectMethods;
+        }
     }
 
 }
