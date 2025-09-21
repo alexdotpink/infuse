@@ -16,6 +16,8 @@ public final class BindingScope {
     public static final BindingScope IMMUTABLE_INSTANCE = new BindingScope("immutable_instance");
     public static final BindingScope SINGLETON = new BindingScope("singleton");
     public static final BindingScope EAGER_SINGLETON = new BindingScope("eager_singleton");
+    public static final BindingScope REQUEST = new BindingScope("request");
+    public static final BindingScope SESSION = new BindingScope("session");
 
     private final String name;
 
@@ -24,11 +26,26 @@ public final class BindingScope {
     }
 
     public static BindingScope custom(@NotNull String name) {
-        if (Objects.equals(name, "*")) {
-            return ANY;
+        switch (Objects.requireNonNull(name, "name").toLowerCase(Locale.ROOT)) {
+            case "*":
+                return ANY;
+            case "unscoped":
+                return UNSCOPED;
+            case "instance":
+                return INSTANCE;
+            case "immutable_instance":
+                return IMMUTABLE_INSTANCE;
+            case "singleton":
+                return SINGLETON;
+            case "eager_singleton":
+                return EAGER_SINGLETON;
+            case "request":
+                return REQUEST;
+            case "session":
+                return SESSION;
+            default:
+                return new BindingScope(name);
         }
-
-        return new BindingScope(name);
     }
 
     public @NotNull String getName() {

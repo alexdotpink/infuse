@@ -8,7 +8,8 @@ Infuse is a powerful and flexible dependency injection library for Java. Designe
 
 - **Annotation-Driven**: Utilizes custom annotations like `@Inject` for easy dependency management.
 - **Support for Lifecycle Methods**: Annotations like `@PostConstruct` and `@PreDestroy` allow for lifecycle management.
-- **Flexible Binding**: Supports various types of bindings including singleton and instance providers.
+- **Flexible Binding**: Supports rich binding options including singleton, instance, request, session, and custom scopes.
+- **First-class Scopes**: Activate request/session lifecycles and register custom scopes via the fluent API or `Injector#openScope` utilities.
 - **Eager and Lazy Initialization**: Options for both eager and lazy initialization of dependencies.
 - **Nested Injection**: Supports nested dependency injection through child injectors.
 

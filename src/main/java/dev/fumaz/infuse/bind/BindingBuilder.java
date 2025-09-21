@@ -75,6 +75,14 @@ public class BindingBuilder<T> {
         return this;
     }
 
+    public BindingBuilder<T> requestScoped() {
+        return inScope(BindingScope.REQUEST);
+    }
+
+    public BindingBuilder<T> sessionScoped() {
+        return inScope(BindingScope.SESSION);
+    }
+
     public Binding<T> to(@NotNull Class<? extends T> implementation) {
         Objects.requireNonNull(implementation, "implementation");
         ensureAssignable(implementation);
@@ -128,6 +136,26 @@ public class BindingBuilder<T> {
         this.scope = BindingScope.IMMUTABLE_INSTANCE;
 
         return build();
+    }
+
+    public Binding<T> toRequestScoped() {
+        requestScoped();
+        return to(type);
+    }
+
+    public Binding<T> toRequestScoped(@NotNull Class<? extends T> implementation) {
+        requestScoped();
+        return to(implementation);
+    }
+
+    public Binding<T> toSessionScoped() {
+        sessionScoped();
+        return to(type);
+    }
+
+    public Binding<T> toSessionScoped(@NotNull Class<? extends T> implementation) {
+        sessionScoped();
+        return to(implementation);
     }
 
     public Binding<T> toSupplier(@NotNull Supplier<? extends T> supplier) {

@@ -2,6 +2,9 @@ package dev.fumaz.infuse.injector;
 
 import dev.fumaz.infuse.bind.Binding;
 import dev.fumaz.infuse.context.Context;
+import dev.fumaz.infuse.bind.BindingScope;
+import dev.fumaz.infuse.scope.ScopeHandle;
+import dev.fumaz.infuse.scope.Scopes;
 import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.Provider;
 import org.jetbrains.annotations.NotNull;
@@ -47,6 +50,26 @@ public interface Injector {
 
     default @NotNull Injector child(@NotNull Module... modules) {
         return child(Arrays.asList(modules));
+    }
+
+    default @NotNull ScopeHandle openScope(@NotNull BindingScope scope) {
+        return Scopes.open(this, scope, null);
+    }
+
+    default @NotNull ScopeHandle openScope(@NotNull BindingScope scope, Object identifier) {
+        return Scopes.open(this, scope, identifier);
+    }
+
+    default @NotNull ScopeHandle openRequest() {
+        return Scopes.openRequest(this);
+    }
+
+    default @NotNull ScopeHandle openRequest(Object identifier) {
+        return Scopes.openRequest(this, identifier);
+    }
+
+    default @NotNull ScopeHandle openSession(@NotNull Object sessionId) {
+        return Scopes.openSession(this, sessionId);
     }
 
 }

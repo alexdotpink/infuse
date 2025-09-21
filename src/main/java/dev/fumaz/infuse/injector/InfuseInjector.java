@@ -34,6 +34,8 @@ import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.InstanceProvider;
 import dev.fumaz.infuse.provider.Provider;
 import dev.fumaz.infuse.provider.SingletonProvider;
+import dev.fumaz.infuse.scope.MemoizingProvider;
+import dev.fumaz.infuse.scope.ScopeProviders;
 import dev.fumaz.infuse.util.InjectionUtils;
 
 public class InfuseInjector implements Injector {
@@ -78,16 +80,16 @@ public class InfuseInjector implements Injector {
                 BindingQualifier.none(), BindingScope.UNSCOPED, false));
 
         List<EagerInstanceRecord> eagerSingletons = new ArrayList<>();
+        Context<?> eagerContext = new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]);
+
         for (Binding<?> binding : getOwnBindings()) {
             Provider<?> provider = binding.getProvider();
             Object instance = null;
 
-            if (provider instanceof SingletonProvider && ((SingletonProvider<?>) provider).isEager()) {
-                instance = ((SingletonProvider<?>) provider).provideWithoutInjecting(
-                        new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
+            if (ScopeProviders.isEager(binding.getScope())) {
+                instance = eagerInstantiate(binding, eagerContext);
             } else if (provider instanceof InstanceProvider) {
-                instance = ((InstanceProvider<?>) provider).provideWithoutInjecting(
-                        new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]));
+                instance = ((InstanceProvider<?>) provider).provideWithoutInjecting(eagerContext);
             }
 
             if (instance != null) {
@@ -150,12 +152,19 @@ public class InfuseInjector implements Injector {
     }
 
     private void registerBinding(@NotNull Binding<?> binding) {
-        bindingRegistry.add(binding);
-        ownBindings.add(binding);
+        Binding<?> scopedBinding = ScopeProviders.decorate(binding);
+        bindingRegistry.add(scopedBinding);
+        ownBindings.add(scopedBinding);
     }
 
     private void recordScopedInstance(@NotNull Binding<?> binding, @Nullable Object instance) {
         if (instance == null) {
+            return;
+        }
+
+        BindingScope scope = binding.getScope();
+
+        if (!ScopeProviders.shouldTrackForShutdown(scope)) {
             return;
         }
 
@@ -165,6 +174,24 @@ public class InfuseInjector implements Injector {
         }
 
         ((InfuseInjector) parent).recordScopedInstance(binding, instance);
+    }
+
+    private Object eagerInstantiate(@NotNull Binding<?> binding, @NotNull Context<?> eagerContext) {
+        Provider<?> provider = binding.getProvider();
+
+        if (provider instanceof SingletonProvider && ((SingletonProvider<?>) provider).isEager()) {
+            return ((SingletonProvider<?>) provider).provideWithoutInjecting(eagerContext);
+        }
+
+        if (provider instanceof MemoizingProvider) {
+            return ((MemoizingProvider<?>) provider).provideWithoutInjecting(this);
+        }
+
+        if (provider instanceof InstanceProvider) {
+            return ((InstanceProvider<?>) provider).provideWithoutInjecting(eagerContext);
+        }
+
+        return provider.provide(eagerContext);
     }
 
     private <T> List<Binding<T>> resolveBindings(@NotNull Class<T> type,
@@ -322,6 +349,8 @@ public class InfuseInjector implements Injector {
 
     @Override
     public void destroy() {
+        ScopeProviders.shutdown(this);
+
         List<ScopedInstanceEntry> recorded = scopedInstances.drain();
         Collections.reverse(recorded);
 
@@ -332,6 +361,10 @@ public class InfuseInjector implements Injector {
         if (parent != null) {
             parent.destroy();
         }
+    }
+
+    public void invokePreDestroy(@NotNull Object instance) {
+        preDestroy(instance);
     }
 
     @Override
@@ -954,7 +987,7 @@ public class InfuseInjector implements Injector {
             }
 
             BindingScope scope = binding.getScope();
-            if (scope == null || scope.isAny() || BindingScope.UNSCOPED.equals(scope)) {
+            if (!ScopeProviders.shouldTrackForShutdown(scope)) {
                 return;
             }
 
