@@ -1396,6 +1396,7 @@ public class InfuseInjector implements Injector {
         private final int[] defaultMapping;
         private final ConcurrentMap<Class<?>, int[]> parameterIndexCache;
         private final int[] nullCompatibleParameters;
+        private static final Object[] NO_ARGUMENTS = new Object[0];
         private static final int[] EMPTY_INDICES = new int[0];
 
         private ConstructorArgumentPlan(ConstructorParameter[] parameters, Context<?>[] contexts) {
@@ -1451,7 +1452,7 @@ public class InfuseInjector implements Injector {
 
         private Object[] resolve(InfuseInjector injector, Object[] provided) {
             if (parameters.length == 0) {
-                return new Object[0];
+                return NO_ARGUMENTS;
             }
 
             Object[] resolved = new Object[parameters.length];
@@ -1547,6 +1548,10 @@ public class InfuseInjector implements Injector {
         }
 
         private static int[] initialiseDefaultMapping(int length) {
+            if (length == 0) {
+                return EMPTY_INDICES;
+            }
+
             int[] mapping = new int[length];
             Arrays.fill(mapping, -1);
             return mapping;
