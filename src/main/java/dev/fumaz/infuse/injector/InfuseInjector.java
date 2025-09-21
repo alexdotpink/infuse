@@ -86,9 +86,16 @@ public class InfuseInjector implements Injector {
 
         registerBinding(new Binding<>(Injector.class, new InstanceProvider<>(this),
                 BindingQualifier.none(), BindingScope.INSTANCE, false));
-        registerBinding(new Binding<>(Logger.class,
-                (context) -> Logger.getLogger(context.getType().getSimpleName()),
-                BindingQualifier.none(), BindingScope.UNSCOPED, false));
+
+        boolean hasCustomLoggerBinding = !bindingRegistry
+                .find(Logger.class, BindingQualifier.none(), BindingScope.ANY)
+                .isEmpty();
+
+        if (!hasCustomLoggerBinding) {
+            registerBinding(new Binding<>(Logger.class,
+                    (context) -> Logger.getLogger(context.getType().getSimpleName()),
+                    BindingQualifier.none(), BindingScope.UNSCOPED, false));
+        }
 
         List<EagerInstanceRecord> eagerSingletons = new ArrayList<>();
         Context<?> eagerContext = new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]);
