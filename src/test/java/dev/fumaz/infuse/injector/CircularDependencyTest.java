@@ -2,6 +2,7 @@ package dev.fumaz.infuse.injector;
 
 import dev.fumaz.infuse.annotation.Inject;
 import dev.fumaz.infuse.annotation.Named;
+import dev.fumaz.infuse.exception.ProvisionException;
 import dev.fumaz.infuse.module.InfuseModule;
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +16,7 @@ class CircularDependencyTest {
     void throwsDescriptiveExceptionForCircularFieldInjection() {
         Injector injector = Injector.create();
 
-        RuntimeException exception = assertThrows(RuntimeException.class,
+        ProvisionException exception = assertThrows(ProvisionException.class,
                 () -> injector.construct(FirstComponent.class));
 
         Throwable cycle = rootCause(exception);

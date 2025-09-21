@@ -59,7 +59,7 @@ public final class Reflections {
         try {
             resources = classLoader.getResources(path);
         } catch (IOException e) {
-            throw new RuntimeException("Could not read package: " + pkgName, e);
+            throw new ReflectionException("Could not read package: " + pkgName, e);
         }
 
         Set<Class<?>> classes = new HashSet<>();
@@ -75,7 +75,7 @@ public final class Reflections {
                     classes.addAll(findClassesInJar(jarPath, path, pkgName, recursive));
                 }
             } catch (Exception e) {
-                throw new RuntimeException("Could not get classes for package: " + pkgName, e);
+                throw new ReflectionException("Could not get classes for package: " + pkgName, e);
             }
         }
 
@@ -108,7 +108,7 @@ public final class Reflections {
                 }
             }
         } catch (IOException e) {
-            throw new RuntimeException(packageName + ": unable to read classes", e);
+            throw new ReflectionException(packageName + ": unable to read classes", e);
         }
         return classes;
     }

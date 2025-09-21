@@ -6,6 +6,7 @@ import dev.fumaz.infuse.injector.Injector;
 import dev.fumaz.infuse.provider.Provider;
 import dev.fumaz.infuse.provider.SingletonProvider;
 import dev.fumaz.infuse.util.InjectionUtils;
+import dev.fumaz.infuse.exception.ProvisionException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -242,7 +243,7 @@ public class BindingBuilder<T> {
 
             return instance;
         } catch (ReflectiveOperationException e) {
-            throw new RuntimeException("Failed to invoke constructor " + constructor, e);
+            throw new ProvisionException("Failed to invoke constructor " + constructor, e);
         }
     }
 

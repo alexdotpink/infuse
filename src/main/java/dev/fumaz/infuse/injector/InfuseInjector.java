@@ -34,6 +34,8 @@ import dev.fumaz.infuse.bind.Binding;
 import dev.fumaz.infuse.bind.BindingQualifier;
 import dev.fumaz.infuse.bind.BindingRegistry;
 import dev.fumaz.infuse.bind.BindingScope;
+import dev.fumaz.infuse.exception.ConfigurationException;
+import dev.fumaz.infuse.exception.ProvisionException;
 import dev.fumaz.infuse.context.Context;
 import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.InstanceProvider;
@@ -321,7 +323,7 @@ public class InfuseInjector implements Injector {
         } catch (Exception e) {
             System.err.println("Failed to construct " + type.getName());
             e.printStackTrace();
-            throw new RuntimeException(e);
+            throw new ProvisionException("Failed to construct " + type.getName(), e);
         }
     }
 
@@ -336,7 +338,7 @@ public class InfuseInjector implements Injector {
         } catch (Exception e) {
             System.err.println("Failed to construct without injecting " + type.getName());
             e.printStackTrace();
-            throw new RuntimeException(e);
+            throw new ProvisionException("Failed to construct without injecting " + type.getName(), e);
         }
     }
 
@@ -358,7 +360,7 @@ public class InfuseInjector implements Injector {
         } catch (Exception e) {
             System.err.println("Failed to construct via constructor " + constructor.toGenericString());
             e.printStackTrace();
-            throw new RuntimeException(e);
+            throw new ProvisionException("Failed to construct via constructor " + constructor.toGenericString(), e);
         }
     }
 
@@ -439,7 +441,7 @@ public class InfuseInjector implements Injector {
         Binding<T> binding = getBindingOrNull(type);
 
         if (binding == null) {
-            throw new RuntimeException("No binding found for " + type.getName());
+            throw new ConfigurationException("No binding found for " + type.getName());
         }
 
         return binding;
@@ -551,9 +553,10 @@ public class InfuseInjector implements Injector {
 
                         field.set(object, value);
                     } catch (Exception e) {
-                        System.err.println(
-                                "Failed to inject field " + field.getName() + " in " + object.getClass().getName());
-                        throw new RuntimeException(e);
+                        String message = "Failed to inject field " + field.getName() + " in "
+                                + object.getClass().getName();
+                        System.err.println(message);
+                        throw new ProvisionException(message, e);
                     }
                 });
     }
@@ -565,9 +568,10 @@ public class InfuseInjector implements Injector {
                     try {
                         injectMethod(object, method);
                     } catch (Exception e) {
-                        System.err.println("Failed to inject method " + method.getName() + " in "
-                                + object.getClass().getName());
-                        throw new RuntimeException(e);
+                        String message = "Failed to inject method " + method.getName() + " in "
+                                + object.getClass().getName();
+                        System.err.println(message);
+                        throw new ProvisionException(message, e);
                     }
                 });
     }
@@ -579,9 +583,10 @@ public class InfuseInjector implements Injector {
                     try {
                         injectMethod(object, method);
                     } catch (Exception e) {
-                        System.err.println("Failed to call pre-destroy method " + method.getName() + " in "
-                                + object.getClass().getName());
-                        throw new RuntimeException(e);
+                        String message = "Failed to call pre-destroy method " + method.getName() + " in "
+                                + object.getClass().getName();
+                        System.err.println(message);
+                        throw new ProvisionException(message, e);
                     }
                 });
     }
@@ -593,9 +598,10 @@ public class InfuseInjector implements Injector {
                     try {
                         injectMethod(object, method);
                     } catch (Exception e) {
-                        System.err.println("Failed to call post-inject method " + method.getName() + " in "
-                                + object.getClass().getName());
-                        throw new RuntimeException(e);
+                        String message = "Failed to call post-inject method " + method.getName() + " in "
+                                + object.getClass().getName();
+                        System.err.println(message);
+                        throw new ProvisionException(message, e);
                     }
                 });
     }
@@ -607,9 +613,10 @@ public class InfuseInjector implements Injector {
                     try {
                         injectMethod(object, method);
                     } catch (Exception e) {
-                        System.err.println("Failed to call post-construct method " + method.getName() + " in "
-                                + object.getClass().getName());
-                        throw new RuntimeException(e);
+                        String message = "Failed to call post-construct method " + method.getName() + " in "
+                                + object.getClass().getName();
+                        System.err.println(message);
+                        throw new ProvisionException(message, e);
                     }
                 });
     }
@@ -618,8 +625,9 @@ public class InfuseInjector implements Injector {
         try {
             method.invoke(object, getMethodArguments(method));
         } catch (Exception e) {
-            System.err.println("Failed to inject method " + method.getName() + " in " + object.getClass().getName());
-            throw new RuntimeException(e);
+            String message = "Failed to inject method " + method.getName() + " in " + object.getClass().getName();
+            System.err.println(message);
+            throw new ProvisionException(message, e);
         }
     }
 
@@ -1391,7 +1399,7 @@ public class InfuseInjector implements Injector {
                         + " cannot be satisfied by the provided arguments.");
             }
 
-            throw new RuntimeException("No suitable constructor found for " + requestedType.getName());
+            throw new ProvisionException("No suitable constructor found for " + requestedType.getName());
         }
 
         @SuppressWarnings("unchecked")

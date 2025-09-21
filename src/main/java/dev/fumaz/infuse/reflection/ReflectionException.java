@@ -1,7 +1,8 @@
 package dev.fumaz.infuse.reflection;
 
+import dev.fumaz.infuse.exception.ConfigurationException;
 
-public class ReflectionException extends RuntimeException {
+public class ReflectionException extends ConfigurationException {
 
     public ReflectionException(String message) {
         super(message);
