@@ -62,6 +62,12 @@ public class InfuseInjector implements Injector {
     private static final int NEGATIVE_BINDING_CACHE_LIMIT = 256;
     private static final MethodHandles.Lookup ROOT_LOOKUP = MethodHandles.lookup();
     private static final ConcurrentMap<Class<?>, MethodHandles.Lookup> PRIVATE_LOOKUPS = new ConcurrentHashMap<>();
+    private static final ClassValue<InjectionPlan> INJECTION_PLANS = new ClassValue<>() {
+        @Override
+        protected InjectionPlan computeValue(Class<?> clazz) {
+            return new InjectionPlan(clazz);
+        }
+    };
 
     private static MethodHandles.Lookup lookupFor(Class<?> type) {
         return PRIVATE_LOOKUPS.computeIfAbsent(type, InfuseInjector::createLookupFor);
@@ -77,7 +83,6 @@ public class InfuseInjector implements Injector {
 
     private final @Nullable Injector parent;
     private final @NotNull List<Module> modules;
-    private final @NotNull ConcurrentMap<Class<?>, InjectionPlan> injectionPlans;
     private final @NotNull ConcurrentMap<Class<?>, ConstructorCache> constructorCaches;
     private final @NotNull ConcurrentMap<Constructor<?>, ConstructorArgumentPlan> constructorArgumentPlans;
     private final @NotNull BindingRegistry bindingRegistry;
@@ -92,7 +97,6 @@ public class InfuseInjector implements Injector {
     public InfuseInjector(@Nullable Injector parent, @NotNull List<Module> modules) {
         this.parent = parent;
         this.modules = modules;
-        this.injectionPlans = new ConcurrentHashMap<>();
         this.constructorCaches = new ConcurrentHashMap<>();
         this.constructorArgumentPlans = new ConcurrentHashMap<>();
         this.bindingRegistry = new BindingRegistry();
@@ -778,10 +782,9 @@ public class InfuseInjector implements Injector {
     }
 
     private InjectionPlan getInjectionPlan(Class<?> clazz) {
-        return injectionPlans.computeIfAbsent(clazz, InjectionPlan::new);
+        return INJECTION_PLANS.get(clazz);
     }
 
-    
     private static final class ResolutionScopes {
 
         private final ThreadLocal<ResolutionScopeState> state;
