@@ -39,12 +39,12 @@ public class Binding<T> {
         }
 
         Binding<?> binding = (Binding<?>) o;
-        return type.isAssignableFrom(binding.type) || binding.type.isAssignableFrom(type);
+        return Objects.equals(type, binding.type) && Objects.equals(provider, binding.provider);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(type);
+        return Objects.hash(type, provider);
     }
 
 }
