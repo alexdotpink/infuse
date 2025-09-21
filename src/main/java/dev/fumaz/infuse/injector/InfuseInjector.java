@@ -113,15 +113,10 @@ public class InfuseInjector implements Injector {
             module.reset();
             module.configure();
 
-            List<Binding<?>> produced = new ArrayList<>(module.getBindings());
+            List<Binding<?>> produced = module.getBindings();
 
             for (Binding<?> binding : produced) {
                 registerBinding(binding);
-            }
-
-            try {
-                module.getBindings().clear();
-            } catch (UnsupportedOperationException ignored) {
             }
         }
 

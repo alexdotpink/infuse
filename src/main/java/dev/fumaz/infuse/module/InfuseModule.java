@@ -6,16 +6,18 @@ import dev.fumaz.infuse.reflection.Reflections;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 public abstract class InfuseModule implements Module {
 
     private final List<Binding<?>> bindings = new ArrayList<>();
+    private final List<Binding<?>> bindingsView = Collections.unmodifiableList(bindings);
 
     @Override
     public @NotNull List<Binding<?>> getBindings() {
-        return bindings;
+        return bindingsView;
     }
 
     public <T> @NotNull BindingBuilder<T> bind(Class<T> type) {
@@ -59,13 +61,8 @@ public abstract class InfuseModule implements Module {
         module.reset();
         module.configure();
 
-        List<Binding<?>> produced = new ArrayList<>(module.getBindings());
+        List<Binding<?>> produced = module.getBindings();
         bindings.addAll(produced);
-
-        try {
-            module.getBindings().clear();
-        } catch (UnsupportedOperationException ignored) {
-        }
     }
 
 }
