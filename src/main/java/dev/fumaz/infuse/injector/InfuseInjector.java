@@ -159,12 +159,7 @@ public class InfuseInjector implements Injector {
 
     @Override
     public <T> T construct(@NotNull Class<T> type, @NotNull Object... args) {
-        Constructor<T> constructor = findSuitableConstructor(type, args);
-
-        if (constructor == null) {
-            throw new RuntimeException("No suitable constructor found for " + type.getName());
-        }
-
+        Constructor<T> constructor = resolveConstructor(type, args);
         constructor.setAccessible(true);
 
         try {
@@ -188,12 +183,7 @@ public class InfuseInjector implements Injector {
     }
 
     public <T> T constructWithoutInjecting(@NotNull Class<T> type, @NotNull Object... args) {
-        Constructor<T> constructor = findSuitableConstructor(type, args);
-
-        if (constructor == null) {
-            throw new RuntimeException("No injectable constructor found for " + type.getName());
-        }
-
+        Constructor<T> constructor = resolveConstructor(type, args);
         constructor.setAccessible(true);
 
         try {
@@ -365,6 +355,70 @@ public class InfuseInjector implements Injector {
         }
 
         return bestMatch;
+    }
+
+    private <T> Constructor<T> resolveConstructor(Class<T> type, Object... args) {
+        Constructor<T> injectable = findInjectableConstructor(type);
+
+        if (injectable != null && injectable.isAnnotationPresent(Inject.class)) {
+            requireArgumentsCompatible(type, injectable, args);
+            return injectable;
+        }
+
+        if (injectable != null && !injectable.isAnnotationPresent(Inject.class)) {
+            if (args.length == 0 || isConstructorCompatible(injectable, args)) {
+                return injectable;
+            }
+        }
+
+        Constructor<T> heuristic = findSuitableConstructor(type, args);
+
+        if (heuristic != null) {
+            return heuristic;
+        }
+
+        if (injectable != null && injectable.isAnnotationPresent(Inject.class)) {
+            throw new IllegalArgumentException("Annotated constructor for " + type.getName()
+                    + " cannot be satisfied by the provided arguments.");
+        }
+
+        throw new RuntimeException("No suitable constructor found for " + type.getName());
+    }
+
+    private boolean isConstructorCompatible(Constructor<?> constructor, Object... args) {
+        Class<?>[] parameterTypes = constructor.getParameterTypes();
+
+        if (args.length > parameterTypes.length) {
+            return false;
+        }
+
+        for (Object arg : args) {
+            if (arg == null) {
+                continue;
+            }
+
+            boolean matched = false;
+
+            for (Class<?> parameterType : parameterTypes) {
+                if (parameterType.isInstance(arg)) {
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void requireArgumentsCompatible(Class<?> type, Constructor<?> constructor, Object... args) {
+        if (!isConstructorCompatible(constructor, args)) {
+            throw new IllegalArgumentException("Annotated constructor for " + type.getName()
+                    + " does not accept the provided arguments.");
+        }
     }
 
     private int getClassDistance(Class<?> expected, Class<?> actual) {
