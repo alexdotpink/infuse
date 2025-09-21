@@ -20,8 +20,10 @@ import java.util.Map;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Objects;
+import java.util.Set;
 import java.util.logging.Logger;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 
 import org.jetbrains.annotations.NotNull;
@@ -49,6 +51,8 @@ import dev.fumaz.infuse.util.InjectionUtils;
 
 public class InfuseInjector implements Injector {
 
+    private static final int NEGATIVE_BINDING_CACHE_LIMIT = 256;
+
     private final @Nullable Injector parent;
     private final @NotNull List<Module> modules;
     private final @NotNull ConcurrentMap<Class<?>, InjectionPlan> injectionPlans;
@@ -56,6 +60,8 @@ public class InfuseInjector implements Injector {
     private final @NotNull ConcurrentMap<Constructor<?>, ConstructorArgumentPlan> constructorArgumentPlans;
     private final @NotNull BindingRegistry bindingRegistry;
     private final @NotNull ConcurrentMap<BindingQueryKey, List<Binding<?>>> bindingViewCache;
+    private final @NotNull Set<NegativeBindingKey> negativeBindingCache;
+    private final @NotNull ConcurrentLinkedQueue<NegativeBindingKey> negativeBindingOrder;
     private final @NotNull List<Binding<?>> ownBindings;
     private final @NotNull ScopedInstanceRegistry scopedInstances;
     private final @NotNull ResolutionScopes resolutionScopes;
@@ -68,6 +74,8 @@ public class InfuseInjector implements Injector {
         this.constructorArgumentPlans = new ConcurrentHashMap<>();
         this.bindingRegistry = new BindingRegistry();
         this.bindingViewCache = new ConcurrentHashMap<>();
+        this.negativeBindingCache = ConcurrentHashMap.newKeySet();
+        this.negativeBindingOrder = new ConcurrentLinkedQueue<>();
         this.ownBindings = new ArrayList<>();
         this.scopedInstances = new ScopedInstanceRegistry();
         this.resolutionScopes = new ResolutionScopes(this);
@@ -178,6 +186,7 @@ public class InfuseInjector implements Injector {
         bindingRegistry.add(scopedBinding);
         ownBindings.add(scopedBinding);
         bindingViewCache.clear();
+        clearNegativeLookupCache();
     }
 
     private void recordScopedInstance(@NotNull Binding<?> binding, @Nullable Object instance) {
@@ -226,6 +235,10 @@ public class InfuseInjector implements Injector {
 
         if (view.isEmpty()) {
             return Collections.emptyList();
+        }
+
+        if (key.scope.isAny()) {
+            forgetNegativeLookup(key.type, key.qualifier);
         }
 
         return (List<Binding<T>>) (List<?>) view;
@@ -297,6 +310,44 @@ public class InfuseInjector implements Injector {
         return Collections.unmodifiableList(matches);
     }
 
+    private boolean isNegativeLookupCached(@NotNull Class<?> type, @NotNull BindingQualifier qualifier) {
+        return negativeBindingCache.contains(new NegativeBindingKey(type, qualifier));
+    }
+
+    private void recordNegativeLookup(@NotNull Class<?> type, @NotNull BindingQualifier qualifier) {
+        NegativeBindingKey key = new NegativeBindingKey(type, qualifier);
+
+        if (negativeBindingCache.add(key)) {
+            negativeBindingOrder.add(key);
+            trimNegativeLookupCache();
+        }
+    }
+
+    private void forgetNegativeLookup(@NotNull Class<?> type, @NotNull BindingQualifier qualifier) {
+        NegativeBindingKey key = new NegativeBindingKey(type, qualifier);
+
+        if (negativeBindingCache.remove(key)) {
+            negativeBindingOrder.remove(key);
+        }
+    }
+
+    private void trimNegativeLookupCache() {
+        while (negativeBindingCache.size() > NEGATIVE_BINDING_CACHE_LIMIT) {
+            NegativeBindingKey evicted = negativeBindingOrder.poll();
+
+            if (evicted == null) {
+                return;
+            }
+
+            negativeBindingCache.remove(evicted);
+        }
+    }
+
+    private void clearNegativeLookupCache() {
+        negativeBindingCache.clear();
+        negativeBindingOrder.clear();
+    }
+
     private void injectInjectionPoints(@NotNull Object object) {
         injectVariables(object);
         injectMethods(object);
@@ -320,10 +371,17 @@ public class InfuseInjector implements Injector {
                 return type.cast(existing);
             }
 
+            if (optional && isNegativeLookupCached(type, qualifier)) {
+                return null;
+            }
+
             List<Binding<T>> matches = resolveBindings(type, qualifier, BindingScope.ANY);
 
-            if (matches.isEmpty() && optional) {
-                return null;
+            if (matches.isEmpty()) {
+                if (optional) {
+                    recordNegativeLookup(type, qualifier);
+                    return null;
+                }
             }
 
             if (matches.size() > 1) {
@@ -1624,6 +1682,37 @@ public class InfuseInjector implements Injector {
         @Override
         public int size() {
             return first.size() + second.size();
+        }
+    }
+
+    private static final class NegativeBindingKey {
+        private final Class<?> type;
+        private final BindingQualifier qualifier;
+        private final int hash;
+
+        private NegativeBindingKey(@NotNull Class<?> type, @NotNull BindingQualifier qualifier) {
+            this.type = Objects.requireNonNull(type, "type");
+            this.qualifier = Objects.requireNonNull(qualifier, "qualifier");
+            this.hash = Objects.hash(this.type, this.qualifier);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+
+            if (!(obj instanceof NegativeBindingKey)) {
+                return false;
+            }
+
+            NegativeBindingKey other = (NegativeBindingKey) obj;
+            return type.equals(other.type) && qualifier.equals(other.qualifier);
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
         }
     }
 
