@@ -1335,11 +1335,13 @@ public class InfuseInjector implements Injector {
 
     private static final class ConstructorArgumentPlan {
         private final ConstructorParameter[] parameters;
+        private final Context<?>[] contexts;
         private final ConcurrentMap<ConstructorArgumentsKey, int[]> assignmentCache;
         private final int[] defaultMapping;
 
-        private ConstructorArgumentPlan(ConstructorParameter[] parameters) {
+        private ConstructorArgumentPlan(ConstructorParameter[] parameters, Context<?>[] contexts) {
             this.parameters = parameters;
+            this.contexts = contexts;
             this.assignmentCache = new ConcurrentHashMap<>();
             this.defaultMapping = initialiseDefaultMapping(parameters.length);
         }
@@ -1348,6 +1350,7 @@ public class InfuseInjector implements Injector {
         private static ConstructorArgumentPlan create(InfuseInjector injector, Constructor<?> constructor) {
             Parameter[] reflectionParameters = constructor.getParameters();
             ConstructorParameter[] parameters = new ConstructorParameter[reflectionParameters.length];
+            Context<?>[] contexts = new Context<?>[reflectionParameters.length];
 
             for (int i = 0; i < reflectionParameters.length; i++) {
                 Parameter parameter = reflectionParameters[i];
@@ -1377,11 +1380,12 @@ public class InfuseInjector implements Injector {
                             parameter.getName(), annotations).detach();
                 }
 
-                parameters[i] = new ConstructorParameter(parameterType, parameter.getName(), optional, context,
+                contexts[i] = context;
+                parameters[i] = new ConstructorParameter(parameterType, parameter.getName(), optional,
                         direct, declaringType);
             }
 
-            return new ConstructorArgumentPlan(parameters);
+            return new ConstructorArgumentPlan(parameters, contexts);
         }
 
         private Object[] resolve(InfuseInjector injector, Object[] provided) {
@@ -1411,7 +1415,7 @@ public class InfuseInjector implements Injector {
                     }
                 }
 
-                resolved[i] = parameters[i].resolve(injector);
+                resolved[i] = parameters[i].resolve(injector, contexts[i]);
             }
 
             return resolved;
@@ -1448,21 +1452,18 @@ public class InfuseInjector implements Injector {
         private final boolean optional;
         private final boolean primitive;
         private final String name;
-        private final Context<?> context;
         private final Function<InfuseInjector, Object> direct;
         private final Class<?> declaringType;
 
         private ConstructorParameter(Class<?> type,
                                      String name,
                                      boolean optional,
-                                     @Nullable Context<?> context,
                                      @Nullable Function<InfuseInjector, Object> direct,
                                      Class<?> declaringType) {
             this.type = type;
             this.optional = optional;
             this.primitive = type.isPrimitive();
             this.name = name;
-            this.context = context;
             this.direct = direct;
             this.declaringType = declaringType;
         }
@@ -1475,7 +1476,7 @@ public class InfuseInjector implements Injector {
             return type.isInstance(candidate);
         }
 
-        private Object resolve(InfuseInjector injector) {
+        private Object resolve(InfuseInjector injector, @Nullable Context<?> context) {
             if (optional && primitive) {
                 throw new IllegalArgumentException("Optional constructor parameter " + name
                         + " in " + declaringType.getName()
