@@ -1338,12 +1338,17 @@ public class InfuseInjector implements Injector {
         private final Context<?>[] contexts;
         private final ConcurrentMap<ConstructorArgumentsKey, int[]> assignmentCache;
         private final int[] defaultMapping;
+        private final ConcurrentMap<Class<?>, int[]> parameterIndexCache;
+        private final int[] nullCompatibleParameters;
+        private static final int[] EMPTY_INDICES = new int[0];
 
         private ConstructorArgumentPlan(ConstructorParameter[] parameters, Context<?>[] contexts) {
             this.parameters = parameters;
             this.contexts = contexts;
             this.assignmentCache = new ConcurrentHashMap<>();
             this.defaultMapping = initialiseDefaultMapping(parameters.length);
+            this.parameterIndexCache = new ConcurrentHashMap<>();
+            this.nullCompatibleParameters = resolveNullCompatibleParameters(parameters);
         }
 
         @SuppressWarnings("unchecked")
@@ -1422,22 +1427,67 @@ public class InfuseInjector implements Injector {
         }
 
         private int[] computeMapping(Object[] provided) {
-            int[] mapping = Arrays.copyOf(defaultMapping, defaultMapping.length);
+            int[] mapping = new int[parameters.length];
+            Arrays.fill(mapping, -1);
 
-            for (int parameterIndex = 0; parameterIndex < parameters.length; parameterIndex++) {
-                ConstructorParameter parameter = parameters[parameterIndex];
+            for (int providedIndex = 0; providedIndex < provided.length; providedIndex++) {
+                Object candidate = provided[providedIndex];
 
-                for (int providedIndex = 0; providedIndex < provided.length; providedIndex++) {
-                    Object candidate = provided[providedIndex];
+                int[] matchingParameters;
+                if (candidate == null) {
+                    matchingParameters = nullCompatibleParameters;
+                } else {
+                    Class<?> candidateClass = candidate.getClass();
+                    matchingParameters = parameterIndexCache.computeIfAbsent(candidateClass,
+                            this::resolveParameterIndexesFor);
+                }
 
-                    if (parameter.supports(candidate)) {
+                if (matchingParameters.length == 0) {
+                    continue;
+                }
+
+                for (int parameterIndex : matchingParameters) {
+                    if (mapping[parameterIndex] < 0) {
                         mapping[parameterIndex] = providedIndex;
-                        break;
                     }
                 }
             }
 
             return mapping;
+        }
+
+        private int[] resolveParameterIndexesFor(Class<?> candidateType) {
+            int[] buffer = new int[parameters.length];
+            int count = 0;
+
+            for (int parameterIndex = 0; parameterIndex < parameters.length; parameterIndex++) {
+                if (parameters[parameterIndex].supports(candidateType)) {
+                    buffer[count++] = parameterIndex;
+                }
+            }
+
+            if (count == 0) {
+                return EMPTY_INDICES;
+            }
+
+            return Arrays.copyOf(buffer, count);
+        }
+
+        private static int[] resolveNullCompatibleParameters(ConstructorParameter[] parameters) {
+            if (parameters.length == 0) {
+                return EMPTY_INDICES;
+            }
+
+            int[] buffer = new int[parameters.length];
+            int count = 0;
+
+            for (int i = 0; i < parameters.length; i++) {
+                if (parameters[i].supports((Class<?>) null)) {
+                    buffer[count++] = i;
+                }
+            }
+
+            return count == 0 ? EMPTY_INDICES : Arrays.copyOf(buffer, count);
         }
 
         private static int[] initialiseDefaultMapping(int length) {
@@ -1469,11 +1519,15 @@ public class InfuseInjector implements Injector {
         }
 
         private boolean supports(Object candidate) {
-            if (candidate == null) {
+            return supports(candidate == null ? null : candidate.getClass());
+        }
+
+        private boolean supports(@Nullable Class<?> candidateType) {
+            if (candidateType == null) {
                 return !primitive;
             }
 
-            return type.isInstance(candidate);
+            return type.isAssignableFrom(candidateType);
         }
 
         private Object resolve(InfuseInjector injector, @Nullable Context<?> context) {
