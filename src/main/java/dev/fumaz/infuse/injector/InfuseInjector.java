@@ -6,6 +6,7 @@ import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -48,6 +49,7 @@ public class InfuseInjector implements Injector {
     private final @NotNull List<Module> modules;
     private final @NotNull ConcurrentMap<Class<?>, InjectionPlan> injectionPlans;
     private final @NotNull ConcurrentMap<Class<?>, ConstructorCache> constructorCaches;
+    private final @NotNull ConcurrentMap<Constructor<?>, ConstructorArgumentPlan> constructorArgumentPlans;
     private final @NotNull BindingRegistry bindingRegistry;
     private final @NotNull List<Binding<?>> ownBindings;
     private final @NotNull ScopedInstanceRegistry scopedInstances;
@@ -58,6 +60,7 @@ public class InfuseInjector implements Injector {
         this.modules = modules;
         this.injectionPlans = new ConcurrentHashMap<>();
         this.constructorCaches = new ConcurrentHashMap<>();
+        this.constructorArgumentPlans = new ConcurrentHashMap<>();
         this.bindingRegistry = new BindingRegistry();
         this.ownBindings = new ArrayList<>();
         this.scopedInstances = new ScopedInstanceRegistry();
@@ -519,33 +522,12 @@ public class InfuseInjector implements Injector {
     }
 
     private @NotNull Object[] getConstructorArguments(@NotNull Constructor<?> constructor, Object... provided) {
-        return Arrays.stream(constructor.getParameters())
-                .map(parameter -> {
-                    for (Object arg : provided) {
-                        if (parameter.getType().isInstance(arg)) {
-                            return arg;
-                        }
-                    }
+        ConstructorArgumentPlan plan = constructorArgumentPlans.computeIfAbsent(constructor, this::buildConstructorArgumentPlan);
+        return plan.resolve(this, provided);
+    }
 
-                    Annotation[] annotations = parameter.getAnnotations();
-                    boolean optional = InjectionUtils.isOptional(annotations);
-
-                    if (optional && parameter.getType().isPrimitive()) {
-                        throw new IllegalArgumentException("Optional constructor parameter " + parameter.getName()
-                                + " in " + constructor.getDeclaringClass().getName()
-                                + " cannot target primitive type " + parameter.getType().getName());
-                    }
-
-                    Object value = provide(parameter.getType(), new Context<>(constructor.getDeclaringClass(), this, this,
-                            ElementType.CONSTRUCTOR, parameter.getName(), annotations));
-
-                    if (optional && value == null) {
-                        return null;
-                    }
-
-                    return value;
-                })
-                .toArray();
+    private ConstructorArgumentPlan buildConstructorArgumentPlan(@NotNull Constructor<?> constructor) {
+        return ConstructorArgumentPlan.create(this, constructor);
     }
 
     private void injectVariables(Object object) {
@@ -1174,6 +1156,166 @@ public class InfuseInjector implements Injector {
 
         private int priority() {
             return priority;
+        }
+    }
+
+    private static final class ConstructorArgumentPlan {
+        private final ConstructorParameter[] parameters;
+        private final ConcurrentMap<ConstructorArgumentsKey, int[]> assignmentCache;
+        private final int[] defaultMapping;
+
+        private ConstructorArgumentPlan(ConstructorParameter[] parameters) {
+            this.parameters = parameters;
+            this.assignmentCache = new ConcurrentHashMap<>();
+            this.defaultMapping = initialiseDefaultMapping(parameters.length);
+        }
+
+        private static ConstructorArgumentPlan create(InfuseInjector injector, Constructor<?> constructor) {
+            Parameter[] reflectionParameters = constructor.getParameters();
+            ConstructorParameter[] parameters = new ConstructorParameter[reflectionParameters.length];
+
+            for (int i = 0; i < reflectionParameters.length; i++) {
+                Parameter parameter = reflectionParameters[i];
+                Annotation[] annotations = parameter.getAnnotations();
+                boolean optional = InjectionUtils.isOptional(annotations);
+                Context<?> context = new Context<>(constructor.getDeclaringClass(), injector, injector,
+                        ElementType.CONSTRUCTOR, parameter.getName(), annotations);
+
+                parameters[i] = new ConstructorParameter(parameter.getType(), parameter.getName(), optional, context);
+            }
+
+            return new ConstructorArgumentPlan(parameters);
+        }
+
+        private Object[] resolve(InfuseInjector injector, Object[] provided) {
+            if (parameters.length == 0) {
+                return new Object[0];
+            }
+
+            Object[] resolved = new Object[parameters.length];
+
+            int[] mapping;
+            if (provided.length == 0) {
+                mapping = defaultMapping;
+            } else {
+                ConstructorArgumentsKey key = new ConstructorArgumentsKey(provided);
+                mapping = assignmentCache.computeIfAbsent(key, unused -> computeMapping(provided));
+            }
+
+            for (int i = 0; i < parameters.length; i++) {
+                int providedIndex = mapping.length > i ? mapping[i] : -1;
+
+                if (providedIndex >= 0 && providedIndex < provided.length) {
+                    Object candidate = provided[providedIndex];
+
+                    if (parameters[i].supports(candidate)) {
+                        resolved[i] = candidate;
+                        continue;
+                    }
+                }
+
+                resolved[i] = parameters[i].resolve(injector);
+            }
+
+            return resolved;
+        }
+
+        private int[] computeMapping(Object[] provided) {
+            int[] mapping = Arrays.copyOf(defaultMapping, defaultMapping.length);
+
+            for (int parameterIndex = 0; parameterIndex < parameters.length; parameterIndex++) {
+                ConstructorParameter parameter = parameters[parameterIndex];
+
+                for (int providedIndex = 0; providedIndex < provided.length; providedIndex++) {
+                    Object candidate = provided[providedIndex];
+
+                    if (parameter.supports(candidate)) {
+                        mapping[parameterIndex] = providedIndex;
+                        break;
+                    }
+                }
+            }
+
+            return mapping;
+        }
+
+        private static int[] initialiseDefaultMapping(int length) {
+            int[] mapping = new int[length];
+            Arrays.fill(mapping, -1);
+            return mapping;
+        }
+    }
+
+    private static final class ConstructorParameter {
+        private final Class<?> type;
+        private final boolean optional;
+        private final boolean primitive;
+        private final String name;
+        private final Context<?> context;
+        private final Class<?> declaringType;
+
+        private ConstructorParameter(Class<?> type, String name, boolean optional, Context<?> context) {
+            this.type = type;
+            this.optional = optional;
+            this.primitive = type.isPrimitive();
+            this.name = name;
+            this.context = context;
+            this.declaringType = context.getType();
+        }
+
+        private boolean supports(Object candidate) {
+            return candidate != null && type.isInstance(candidate);
+        }
+
+        private Object resolve(InfuseInjector injector) {
+            if (optional && primitive) {
+                throw new IllegalArgumentException("Optional constructor parameter " + name
+                        + " in " + declaringType.getName()
+                        + " cannot target primitive type " + type.getName());
+            }
+
+            Object value = injector.provide(type, context);
+
+            if (optional && value == null) {
+                return null;
+            }
+
+            return value;
+        }
+    }
+
+    private static final class ConstructorArgumentsKey {
+        private final Class<?>[] argumentTypes;
+        private final int hash;
+
+        private ConstructorArgumentsKey(Object[] args) {
+            this.argumentTypes = new Class<?>[args.length];
+
+            for (int i = 0; i < args.length; i++) {
+                Object arg = args[i];
+                this.argumentTypes[i] = arg == null ? null : arg.getClass();
+            }
+
+            this.hash = Arrays.hashCode(argumentTypes);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+
+            if (!(obj instanceof ConstructorArgumentsKey)) {
+                return false;
+            }
+
+            ConstructorArgumentsKey other = (ConstructorArgumentsKey) obj;
+            return Arrays.equals(argumentTypes, other.argumentTypes);
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
         }
     }
 
