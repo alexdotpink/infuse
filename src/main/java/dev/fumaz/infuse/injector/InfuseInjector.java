@@ -2,6 +2,7 @@ package dev.fumaz.infuse.injector;
 
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
+import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -628,7 +629,6 @@ public class InfuseInjector implements Injector {
                 .getInjectableFields()
                 .forEach(field -> {
                     try {
-                        field.setAccessible(true);
                         Annotation[] annotations = field.getAnnotations();
                         boolean optional = InjectionUtils.isOptional(annotations);
                         Object value = provide(field.getType(), new Context<>(object.getClass(), object, this,
@@ -710,7 +710,6 @@ public class InfuseInjector implements Injector {
 
     private void injectMethod(Object object, Method method) {
         try {
-            method.setAccessible(true);
             method.invoke(object, getMethodArguments(method));
         } catch (Exception e) {
             System.err.println("Failed to inject method " + method.getName() + " in " + object.getClass().getName());
@@ -1073,18 +1072,23 @@ public class InfuseInjector implements Injector {
             for (Class<?> current = clazz; current != null; current = current.getSuperclass()) {
                 for (Field field : current.getDeclaredFields()) {
                     if (field.isAnnotationPresent(Inject.class)) {
+                        ensureAccessible(field);
                         injectableFields.add(field);
                     }
                 }
 
                 for (Method method : current.getDeclaredMethods()) {
                     if (method.isAnnotationPresent(Inject.class)) {
+                        ensureAccessible(method);
                         injectableMethods.add(method);
                     } else if (method.isAnnotationPresent(PostConstruct.class)) {
+                        ensureAccessible(method);
                         postConstructMethods.add(method);
                     } else if (method.isAnnotationPresent(PreDestroy.class)) {
+                        ensureAccessible(method);
                         preDestroyMethods.add(method);
                     } else if (method.isAnnotationPresent(PostInject.class)) {
+                        ensureAccessible(method);
                         postInjectMethods.add(method);
                     }
                 }
@@ -1112,6 +1116,12 @@ public class InfuseInjector implements Injector {
 
         public List<Method> getPostInjectMethods() {
             return postInjectMethods;
+        }
+
+        private static void ensureAccessible(AccessibleObject accessibleObject) {
+            if (!accessibleObject.isAccessible()) {
+                accessibleObject.setAccessible(true);
+            }
         }
     }
 
