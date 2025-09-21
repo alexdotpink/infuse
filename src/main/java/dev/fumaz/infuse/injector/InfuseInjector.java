@@ -119,6 +119,7 @@ public class InfuseInjector implements Injector {
     public <T> T provide(@NotNull Class<T> type, @NotNull Context<?> context) {
         ResolutionScopeHandle ownerScope = resolutionScopes.enter(context.getObject());
         ProvisionFrame frame = null;
+        boolean optional = isOptional(context.getAnnotations());
 
         try {
             Object existing = resolutionScopes.lookup(type);
@@ -127,12 +128,21 @@ public class InfuseInjector implements Injector {
                 return type.cast(existing);
             }
 
+            Binding<T> binding = getBindingOrNull(type);
+
+            if (binding == null && optional) {
+                return null;
+            }
+
             frame = resolutionScopes.begin(type);
 
-            Binding<T> binding = getBindingOrNull(type);
             T instance = binding != null
                     ? binding.getProvider().provide(context)
                     : construct(type);
+
+            if (instance == null && optional) {
+                return null;
+            }
 
             resolutionScopes.record(type, instance);
 
@@ -446,8 +456,23 @@ public class InfuseInjector implements Injector {
                         }
                     }
 
-                    return provide(parameter.getType(), new Context<>(constructor.getDeclaringClass(), this, this,
-                            ElementType.CONSTRUCTOR, parameter.getName(), parameter.getAnnotations()));
+                    Annotation[] annotations = parameter.getAnnotations();
+                    boolean optional = isOptional(annotations);
+
+                    if (optional && parameter.getType().isPrimitive()) {
+                        throw new IllegalArgumentException("Optional constructor parameter " + parameter.getName()
+                                + " in " + constructor.getDeclaringClass().getName()
+                                + " cannot target primitive type " + parameter.getType().getName());
+                    }
+
+                    Object value = provide(parameter.getType(), new Context<>(constructor.getDeclaringClass(), this, this,
+                            ElementType.CONSTRUCTOR, parameter.getName(), annotations));
+
+                    if (optional && value == null) {
+                        return null;
+                    }
+
+                    return value;
                 })
                 .toArray();
     }
@@ -458,8 +483,21 @@ public class InfuseInjector implements Injector {
                 .forEach(field -> {
                     try {
                         field.setAccessible(true);
-                        field.set(object, provide(field.getType(), new Context<>(object.getClass(), object, this,
-                                ElementType.FIELD, field.getName(), field.getAnnotations())));
+                        Annotation[] annotations = field.getAnnotations();
+                        boolean optional = isOptional(annotations);
+                        Object value = provide(field.getType(), new Context<>(object.getClass(), object, this,
+                                ElementType.FIELD, field.getName(), annotations));
+
+                        if (value == null && optional) {
+                            if (field.getType().isPrimitive()) {
+                                return;
+                            }
+
+                            field.set(object, null);
+                            return;
+                        }
+
+                        field.set(object, value);
                     } catch (Exception e) {
                         System.err.println(
                                 "Failed to inject field " + field.getName() + " in " + object.getClass().getName());
@@ -526,10 +564,41 @@ public class InfuseInjector implements Injector {
 
     private @NotNull Object[] getMethodArguments(@NotNull Method method) {
         return Arrays.stream(method.getParameters())
-                .map(parameter -> provide(parameter.getType(),
-                        new Context<>(method.getDeclaringClass(), this, this, ElementType.METHOD, parameter.getName(),
-                                parameter.getAnnotations())))
+                .map(parameter -> {
+                    Annotation[] annotations = parameter.getAnnotations();
+                    boolean optional = isOptional(annotations);
+
+                    if (optional && parameter.getType().isPrimitive()) {
+                        throw new IllegalArgumentException("Optional method parameter " + parameter.getName()
+                                + " in " + method.getDeclaringClass().getName()
+                                + " cannot target primitive type " + parameter.getType().getName());
+                    }
+
+                    Object value = provide(parameter.getType(),
+                            new Context<>(method.getDeclaringClass(), this, this, ElementType.METHOD, parameter.getName(),
+                                    annotations));
+
+                    if (optional && value == null) {
+                        return null;
+                    }
+
+                    return value;
+                })
                 .toArray();
+    }
+
+    private static boolean isOptional(Annotation[] annotations) {
+        if (annotations == null) {
+            return false;
+        }
+
+        for (Annotation annotation : annotations) {
+            if (annotation instanceof Inject) {
+                return ((Inject) annotation).optional();
+            }
+        }
+
+        return false;
     }
 
     private static final class ResolutionScopes {
