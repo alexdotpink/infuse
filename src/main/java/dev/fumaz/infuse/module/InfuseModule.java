@@ -22,6 +22,11 @@ public abstract class InfuseModule implements Module {
         return new BindingBuilder<>(type, bindings);
     }
 
+    @Override
+    public void reset() {
+        bindings.clear();
+    }
+
     public void bindPackage(ClassLoader classLoader, String name) {
         Reflections.consume(classLoader, name, true, type -> {
             if (type.isAnnotationPresent(Singleton.class)) {

@@ -53,10 +53,18 @@ public class InfuseInjector implements Injector {
         this.resolutionScopes = new ResolutionScopes(this);
 
         for (Module module : modules) {
+            module.reset();
             module.configure();
 
-            for (Binding<?> binding : module.getBindings()) {
+            List<Binding<?>> produced = new ArrayList<>(module.getBindings());
+
+            for (Binding<?> binding : produced) {
                 registerBinding(binding);
+            }
+
+            try {
+                module.getBindings().clear();
+            } catch (UnsupportedOperationException ignored) {
             }
         }
 

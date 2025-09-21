@@ -14,4 +14,7 @@ public interface Module {
 
     @NotNull List<Binding<?>> getBindings();
 
+    default void reset() {
+    }
+
 }
