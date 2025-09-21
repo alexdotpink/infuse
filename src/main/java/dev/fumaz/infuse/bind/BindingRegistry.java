@@ -62,13 +62,7 @@ public final class BindingRegistry {
             return Collections.emptyList();
         }
 
-        List<Binding<T>> matches = new ArrayList<>(source.size());
-
-        for (Binding<?> binding : source) {
-            matches.add((Binding<T>) binding);
-        }
-
-        return matches;
+        return (List<Binding<T>>) (List<?>) source;
     }
 
     public boolean isEmpty() {
@@ -92,7 +86,9 @@ public final class BindingRegistry {
     private static final class QualifierIndex {
 
         private final Map<BindingScope, CopyOnWriteArrayList<Binding<?>>> byScope = new ConcurrentHashMap<>();
-        private final List<Binding<?>> insertionOrder = new CopyOnWriteArrayList<>();
+        private final Map<BindingScope, List<Binding<?>>> scopedViews = new ConcurrentHashMap<>();
+        private final CopyOnWriteArrayList<Binding<?>> insertionOrder = new CopyOnWriteArrayList<>();
+        private final List<Binding<?>> anyView = Collections.unmodifiableList(insertionOrder);
 
         void add(@NotNull BindingKey key, @NotNull Binding<?> binding) {
             BindingScope scope = key.getScope();
@@ -101,6 +97,7 @@ public final class BindingRegistry {
                 CopyOnWriteArrayList<Binding<?>> scoped = existing != null ? existing : new CopyOnWriteArrayList<>();
                 ensureCompatible(scoped, binding, key);
                 scoped.add(binding);
+                scopedViews.computeIfAbsent(scope, ignoredScope -> Collections.unmodifiableList(scoped));
                 return scoped;
             });
 
@@ -108,12 +105,13 @@ public final class BindingRegistry {
         }
 
         List<Binding<?>> bindingsForScope(@NotNull BindingScope scope) {
-            List<Binding<?>> bindings = byScope.get(scope);
-            if (bindings == null || bindings.isEmpty()) {
+            List<Binding<?>> view = scopedViews.get(scope);
+
+            if (view == null || view.isEmpty()) {
                 return Collections.emptyList();
             }
 
-            return Collections.unmodifiableList(new ArrayList<>(bindings));
+            return view;
         }
 
         List<Binding<?>> anyBindings() {
@@ -121,7 +119,7 @@ public final class BindingRegistry {
                 return Collections.emptyList();
             }
 
-            return Collections.unmodifiableList(new ArrayList<>(insertionOrder));
+            return anyView;
         }
 
         private static void ensureCompatible(@NotNull List<Binding<?>> scopedBindings,

@@ -7,6 +7,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.util.AbstractList;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,6 +32,7 @@ import dev.fumaz.infuse.annotation.PostConstruct;
 import dev.fumaz.infuse.annotation.PostInject;
 import dev.fumaz.infuse.annotation.PreDestroy;
 import dev.fumaz.infuse.bind.Binding;
+import dev.fumaz.infuse.bind.BindingKey;
 import dev.fumaz.infuse.bind.BindingQualifier;
 import dev.fumaz.infuse.bind.BindingRegistry;
 import dev.fumaz.infuse.bind.BindingScope;
@@ -53,6 +55,7 @@ public class InfuseInjector implements Injector {
     private final @NotNull ConcurrentMap<Class<?>, ConstructorCache> constructorCaches;
     private final @NotNull ConcurrentMap<Constructor<?>, ConstructorArgumentPlan> constructorArgumentPlans;
     private final @NotNull BindingRegistry bindingRegistry;
+    private final @NotNull ConcurrentMap<BindingQueryKey, List<Binding<?>>> bindingViewCache;
     private final @NotNull List<Binding<?>> ownBindings;
     private final @NotNull ScopedInstanceRegistry scopedInstances;
     private final @NotNull ResolutionScopes resolutionScopes;
@@ -64,6 +67,7 @@ public class InfuseInjector implements Injector {
         this.constructorCaches = new ConcurrentHashMap<>();
         this.constructorArgumentPlans = new ConcurrentHashMap<>();
         this.bindingRegistry = new BindingRegistry();
+        this.bindingViewCache = new ConcurrentHashMap<>();
         this.ownBindings = new ArrayList<>();
         this.scopedInstances = new ScopedInstanceRegistry();
         this.resolutionScopes = new ResolutionScopes(this);
@@ -173,6 +177,7 @@ public class InfuseInjector implements Injector {
         Binding<?> scopedBinding = ScopeProviders.decorate(binding);
         bindingRegistry.add(scopedBinding);
         ownBindings.add(scopedBinding);
+        bindingViewCache.clear();
     }
 
     private void recordScopedInstance(@NotNull Binding<?> binding, @Nullable Object instance) {
@@ -212,20 +217,84 @@ public class InfuseInjector implements Injector {
         return provider.provide(eagerContext);
     }
 
+    @SuppressWarnings("unchecked")
     private <T> List<Binding<T>> resolveBindings(@NotNull Class<T> type,
                                                  @NotNull BindingQualifier qualifier,
                                                  @NotNull BindingScope scope) {
-        List<Binding<T>> matches = bindingRegistry.find(type, qualifier, scope);
+        BindingQueryKey key = new BindingQueryKey(type, qualifier, scope);
+        List<Binding<?>> view = getBindingView(key);
 
-        if (!matches.isEmpty()) {
-            return matches;
+        if (view.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return (List<Binding<T>>) (List<?>) view;
+    }
+
+    private List<Binding<?>> getBindingView(@NotNull BindingQueryKey key) {
+        return bindingViewCache.computeIfAbsent(key, this::computeBindingView);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Binding<?>> computeBindingView(@NotNull BindingQueryKey key) {
+        List<Binding<?>> local = (List<Binding<?>>) (List<?>) bindingRegistry.find((Class<Object>) key.type,
+                key.qualifier, key.scope);
+        List<Binding<?>> parentView = computeParentBindingView(key);
+
+        if (local.isEmpty()) {
+            return parentView;
+        }
+
+        if (parentView.isEmpty()) {
+            return local;
+        }
+
+        return new CompositeBindingList<>(local, parentView);
+    }
+
+    private List<Binding<?>> computeParentBindingView(@NotNull BindingQueryKey key) {
+        if (parent == null) {
+            return Collections.emptyList();
         }
 
         if (parent instanceof InfuseInjector) {
-            return ((InfuseInjector) parent).resolveBindings(type, qualifier, scope);
+            return ((InfuseInjector) parent).getBindingView(key);
         }
 
-        return Collections.emptyList();
+        return filterParentBindings(parent.getBindings(), key);
+    }
+
+    private static List<Binding<?>> filterParentBindings(@NotNull List<Binding<?>> bindings,
+                                                         @NotNull BindingQueryKey key) {
+        if (bindings.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Binding<?>> matches = new ArrayList<>();
+
+        for (Binding<?> binding : bindings) {
+            BindingKey bindingKey = binding.getKey();
+
+            if (!bindingKey.getType().equals(key.type)) {
+                continue;
+            }
+
+            if (!bindingKey.getQualifier().equals(key.qualifier)) {
+                continue;
+            }
+
+            if (!key.scope.isAny() && !bindingKey.getScope().equals(key.scope)) {
+                continue;
+            }
+
+            matches.add(binding);
+        }
+
+        if (matches.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return Collections.unmodifiableList(matches);
     }
 
     private void injectInjectionPoints(@NotNull Object object) {
@@ -1529,6 +1598,69 @@ public class InfuseInjector implements Injector {
             public int hashCode() {
                 return hash;
             }
+        }
+    }
+
+    private static final class CompositeBindingList<E> extends AbstractList<E> {
+        private final List<? extends E> first;
+        private final List<? extends E> second;
+
+        private CompositeBindingList(@NotNull List<? extends E> first, @NotNull List<? extends E> second) {
+            this.first = Objects.requireNonNull(first, "first");
+            this.second = Objects.requireNonNull(second, "second");
+        }
+
+        @Override
+        public E get(int index) {
+            int firstSize = first.size();
+
+            if (index < firstSize) {
+                return first.get(index);
+            }
+
+            return second.get(index - firstSize);
+        }
+
+        @Override
+        public int size() {
+            return first.size() + second.size();
+        }
+    }
+
+    private static final class BindingQueryKey {
+        private final Class<?> type;
+        private final BindingQualifier qualifier;
+        private final BindingScope scope;
+        private final int hash;
+
+        private BindingQueryKey(@NotNull Class<?> type,
+                                @NotNull BindingQualifier qualifier,
+                                @NotNull BindingScope scope) {
+            this.type = Objects.requireNonNull(type, "type");
+            this.qualifier = Objects.requireNonNull(qualifier, "qualifier");
+            this.scope = Objects.requireNonNull(scope, "scope");
+            this.hash = Objects.hash(this.type, this.qualifier, this.scope);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+
+            if (!(obj instanceof BindingQueryKey)) {
+                return false;
+            }
+
+            BindingQueryKey other = (BindingQueryKey) obj;
+            return type.equals(other.type)
+                    && qualifier.equals(other.qualifier)
+                    && scope.equals(other.scope);
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
         }
     }
 
