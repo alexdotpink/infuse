@@ -10,22 +10,26 @@ import java.util.Map;
 
 public final class BindingRegistry {
 
-    private final Map<BindingKey, List<Binding<?>>> bindings = new LinkedHashMap<>();
+    private final Map<Class<?>, TypeIndex> bindings = new LinkedHashMap<>();
     private final List<Binding<?>> insertionOrder = new ArrayList<>();
 
     public synchronized void add(@NotNull Binding<?> binding) {
         BindingKey key = binding.getKey();
-        List<Binding<?>> existing = bindings.computeIfAbsent(key, k -> new ArrayList<>());
+        TypeIndex typeIndex = bindings.computeIfAbsent(key.getType(), ignored -> new TypeIndex());
+        QualifierIndex qualifierIndex = typeIndex.qualifiers.computeIfAbsent(key.getQualifier(), ignored -> new QualifierIndex());
+        List<Binding<?>> scopedBindings = qualifierIndex.bindingsForScope(key.getScope());
 
-        if (!existing.isEmpty()) {
-            boolean existingSupportsCollections = existing.stream().allMatch(Binding::isCollectionContribution);
+        if (!scopedBindings.isEmpty()) {
+            boolean existingSupportsCollections = scopedBindings.stream().allMatch(Binding::isCollectionContribution);
 
             if (!existingSupportsCollections || !binding.isCollectionContribution()) {
                 throw new IllegalStateException("Duplicate binding registered for " + key.describe());
             }
         }
 
-        existing.add(binding);
+        scopedBindings.add(binding);
+        qualifierIndex.recordAddition(binding);
+        typeIndex.recordAddition(binding);
         insertionOrder.add(binding);
     }
 
@@ -34,29 +38,43 @@ public final class BindingRegistry {
     }
 
     public synchronized List<Binding<?>> byType(@NotNull Class<?> type) {
-        List<Binding<?>> result = new ArrayList<>();
+        TypeIndex typeIndex = bindings.get(type);
 
-        for (Map.Entry<BindingKey, List<Binding<?>>> entry : bindings.entrySet()) {
-            if (entry.getKey().getType().equals(type)) {
-                result.addAll(entry.getValue());
-            }
+        if (typeIndex == null) {
+            return Collections.emptyList();
         }
 
-        return result;
+        return new ArrayList<>(typeIndex.allBindings());
     }
 
     @SuppressWarnings("unchecked")
     public synchronized <T> List<Binding<T>> find(@NotNull Class<T> type,
                                                   @NotNull BindingQualifier qualifier,
                                                   @NotNull BindingScope scope) {
-        List<Binding<T>> matches = new ArrayList<>();
+        TypeIndex typeIndex = bindings.get(type);
 
-        for (Map.Entry<BindingKey, List<Binding<?>>> entry : bindings.entrySet()) {
-            if (entry.getKey().matches(type, qualifier, scope)) {
-                for (Binding<?> binding : entry.getValue()) {
-                    matches.add((Binding<T>) binding);
-                }
-            }
+        if (typeIndex == null) {
+            return Collections.emptyList();
+        }
+
+        QualifierIndex qualifierIndex = typeIndex.qualifiers.get(qualifier);
+
+        if (qualifierIndex == null) {
+            return Collections.emptyList();
+        }
+
+        List<Binding<?>> source = scope.isAny()
+                ? qualifierIndex.anyBindings()
+                : qualifierIndex.bindingsForScopeOrEmpty(scope);
+
+        if (source.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Binding<T>> matches = new ArrayList<>(source.size());
+
+        for (Binding<?> binding : source) {
+            matches.add((Binding<T>) binding);
         }
 
         return matches;
@@ -64,5 +82,55 @@ public final class BindingRegistry {
 
     public synchronized boolean isEmpty() {
         return insertionOrder.isEmpty();
+    }
+
+    private static final class TypeIndex {
+
+        private final Map<BindingQualifier, QualifierIndex> qualifiers = new LinkedHashMap<>();
+        private final List<Binding<?>> insertionOrder = new ArrayList<>();
+
+        void recordAddition(@NotNull Binding<?> binding) {
+            insertionOrder.add(binding);
+        }
+
+        List<Binding<?>> allBindings() {
+            return insertionOrder;
+        }
+    }
+
+    private static final class QualifierIndex {
+
+        private final Map<BindingScope, List<Binding<?>>> byScope = new LinkedHashMap<>();
+        private final List<Binding<?>> insertionOrder = new ArrayList<>();
+        private List<Binding<?>> cachedAny = Collections.emptyList();
+        private boolean anyDirty = true;
+
+        List<Binding<?>> bindingsForScope(@NotNull BindingScope scope) {
+            return byScope.computeIfAbsent(scope, ignored -> new ArrayList<>());
+        }
+
+        List<Binding<?>> bindingsForScopeOrEmpty(@NotNull BindingScope scope) {
+            List<Binding<?>> bindings = byScope.get(scope);
+            return bindings != null ? bindings : Collections.emptyList();
+        }
+
+        void recordAddition(@NotNull Binding<?> binding) {
+            insertionOrder.add(binding);
+            anyDirty = true;
+        }
+
+        List<Binding<?>> anyBindings() {
+            if (anyDirty) {
+                if (insertionOrder.isEmpty()) {
+                    cachedAny = Collections.emptyList();
+                } else {
+                    cachedAny = Collections.unmodifiableList(new ArrayList<>(insertionOrder));
+                }
+
+                anyDirty = false;
+            }
+
+            return cachedAny;
+        }
     }
 }
