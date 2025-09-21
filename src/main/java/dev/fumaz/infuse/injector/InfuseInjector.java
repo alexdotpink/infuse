@@ -29,6 +29,7 @@ import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.InstanceProvider;
 import dev.fumaz.infuse.provider.Provider;
 import dev.fumaz.infuse.provider.SingletonProvider;
+import dev.fumaz.infuse.util.InjectionUtils;
 
 public class InfuseInjector implements Injector {
 
@@ -124,7 +125,7 @@ public class InfuseInjector implements Injector {
     public <T> T provide(@NotNull Class<T> type, @NotNull Context<?> context) {
         ResolutionScopeHandle ownerScope = resolutionScopes.enter(context.getObject());
         ProvisionFrame frame = null;
-        boolean optional = isOptional(context.getAnnotations());
+        boolean optional = InjectionUtils.isOptional(context.getAnnotations());
 
         try {
             Object existing = resolutionScopes.lookup(type);
@@ -215,6 +216,29 @@ public class InfuseInjector implements Injector {
             return t;
         } catch (Exception e) {
             System.err.println("Failed to construct without injecting " + type.getName());
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+    }
+
+    public <T> T construct(@NotNull Constructor<T> constructor) {
+        constructor.setAccessible(true);
+
+        try {
+            T instance = constructor.newInstance(getConstructorArguments(constructor));
+
+            ResolutionScopeHandle scope = resolutionScopes.enter(instance);
+
+            try {
+                postConstruct(instance);
+                injectWithinScope(instance);
+            } finally {
+                resolutionScopes.exit(scope);
+            }
+
+            return instance;
+        } catch (Exception e) {
+            System.err.println("Failed to construct via constructor " + constructor.toGenericString());
             e.printStackTrace();
             throw new RuntimeException(e);
         }
@@ -462,7 +486,7 @@ public class InfuseInjector implements Injector {
                     }
 
                     Annotation[] annotations = parameter.getAnnotations();
-                    boolean optional = isOptional(annotations);
+                    boolean optional = InjectionUtils.isOptional(annotations);
 
                     if (optional && parameter.getType().isPrimitive()) {
                         throw new IllegalArgumentException("Optional constructor parameter " + parameter.getName()
@@ -489,7 +513,7 @@ public class InfuseInjector implements Injector {
                     try {
                         field.setAccessible(true);
                         Annotation[] annotations = field.getAnnotations();
-                        boolean optional = isOptional(annotations);
+                        boolean optional = InjectionUtils.isOptional(annotations);
                         Object value = provide(field.getType(), new Context<>(object.getClass(), object, this,
                                 ElementType.FIELD, field.getName(), annotations));
 
@@ -585,7 +609,7 @@ public class InfuseInjector implements Injector {
         return Arrays.stream(method.getParameters())
                 .map(parameter -> {
                     Annotation[] annotations = parameter.getAnnotations();
-                    boolean optional = isOptional(annotations);
+                    boolean optional = InjectionUtils.isOptional(annotations);
 
                     if (optional && parameter.getType().isPrimitive()) {
                         throw new IllegalArgumentException("Optional method parameter " + parameter.getName()
@@ -604,20 +628,6 @@ public class InfuseInjector implements Injector {
                     return value;
                 })
                 .toArray();
-    }
-
-    private static boolean isOptional(Annotation[] annotations) {
-        if (annotations == null) {
-            return false;
-        }
-
-        for (Annotation annotation : annotations) {
-            if (annotation instanceof Inject) {
-                return ((Inject) annotation).optional();
-            }
-        }
-
-        return false;
     }
 
     private static final class ResolutionScopes {
