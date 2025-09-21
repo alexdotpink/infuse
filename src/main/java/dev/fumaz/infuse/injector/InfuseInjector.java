@@ -1279,7 +1279,11 @@ public class InfuseInjector implements Injector {
         }
 
         private boolean supports(Object candidate) {
-            return candidate != null && type.isInstance(candidate);
+            if (candidate == null) {
+                return !primitive;
+            }
+
+            return type.isInstance(candidate);
         }
 
         private Object resolve(InfuseInjector injector) {
@@ -1369,7 +1373,17 @@ public class InfuseInjector implements Injector {
                 }
             }
 
-            this.injectable = injectableCandidate != null ? injectableCandidate : zeroArgCandidate;
+            Constructor<?> selected = injectableCandidate;
+
+            if (selected == null) {
+                if (zeroArgCandidate != null) {
+                    selected = zeroArgCandidate;
+                } else if (declaredConstructors.length == 1) {
+                    selected = declaredConstructors[0];
+                }
+            }
+
+            this.injectable = selected;
 
             Map<Integer, Constructor<?>[]> arityMap = new HashMap<>(groupedByArity.size());
             for (Map.Entry<Integer, List<Constructor<?>>> entry : groupedByArity.entrySet()) {
