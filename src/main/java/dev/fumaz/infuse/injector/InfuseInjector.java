@@ -92,12 +92,17 @@ public class InfuseInjector implements Injector {
             }
         }
 
-        for (Object singleton : eagerSingletons) {
-            injectInjectionPoints(singleton);
-        }
-
         List<Method> postInjectMethods = new ArrayList<>();
         for (Object singleton : eagerSingletons) {
+            ResolutionScopeHandle scope = resolutionScopes.enter(singleton);
+
+            try {
+                injectInjectionPoints(singleton);
+                postConstruct(singleton);
+            } finally {
+                resolutionScopes.exit(scope);
+            }
+
             postInjectMethods.addAll(getInjectionPlan(singleton.getClass()).getPostInjectMethods());
         }
 
@@ -130,6 +135,7 @@ public class InfuseInjector implements Injector {
 
     private void injectWithinScope(@NotNull Object object) {
         injectInjectionPoints(object);
+        postConstruct(object);
         postInject(object);
     }
 
@@ -235,7 +241,6 @@ public class InfuseInjector implements Injector {
             ResolutionScopeHandle scope = resolutionScopes.enter(t);
 
             try {
-                postConstruct(t);
                 injectWithinScope(t);
             } finally {
                 resolutionScopes.exit(scope);
@@ -256,14 +261,6 @@ public class InfuseInjector implements Injector {
         try {
             T t = constructor.newInstance(getConstructorArguments(constructor, args));
 
-            ResolutionScopeHandle scope = resolutionScopes.enter(t);
-
-            try {
-                postConstruct(t);
-            } finally {
-                resolutionScopes.exit(scope);
-            }
-
             return t;
         } catch (Exception e) {
             System.err.println("Failed to construct without injecting " + type.getName());
@@ -281,7 +278,6 @@ public class InfuseInjector implements Injector {
             ResolutionScopeHandle scope = resolutionScopes.enter(instance);
 
             try {
-                postConstruct(instance);
                 injectWithinScope(instance);
             } finally {
                 resolutionScopes.exit(scope);
