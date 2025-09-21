@@ -41,6 +41,7 @@ import dev.fumaz.infuse.bind.BindingScope;
 import dev.fumaz.infuse.exception.ConfigurationException;
 import dev.fumaz.infuse.exception.ProvisionException;
 import dev.fumaz.infuse.context.Context;
+import dev.fumaz.infuse.context.ContextView;
 import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.InstanceProvider;
 import dev.fumaz.infuse.provider.Provider;
@@ -110,17 +111,16 @@ public class InfuseInjector implements Injector {
         }
 
         List<EagerInstanceRecord> eagerSingletons = new ArrayList<>();
-        Context<?> eagerContext = Context.borrow(getClass(), this, this, ElementType.FIELD, "eager",
-                new Annotation[0]);
+        EagerProvisionContext eagerProvision = new EagerProvisionContext(getClass(), this, this);
         try {
             for (Binding<?> binding : getOwnBindings()) {
                 Provider<?> provider = binding.getProvider();
                 Object instance = null;
 
                 if (ScopeProviders.isEager(binding.getScope())) {
-                    instance = eagerInstantiate(binding, eagerContext);
+                    instance = eagerInstantiate(binding, eagerProvision);
                 } else if (provider instanceof InstanceProvider) {
-                    instance = ((InstanceProvider<?>) provider).provideWithoutInjecting(eagerContext);
+                    instance = ((InstanceProvider<?>) provider).provideWithoutInjecting(eagerProvision.view());
                 }
 
                 if (instance != null) {
@@ -129,7 +129,7 @@ public class InfuseInjector implements Injector {
                 }
             }
         } finally {
-            eagerContext.release();
+            eagerProvision.release();
         }
 
         List<PostInjectInvocation> postInjectInvocations = new ArrayList<>();
@@ -212,11 +212,11 @@ public class InfuseInjector implements Injector {
         ((InfuseInjector) parent).recordScopedInstance(binding, instance);
     }
 
-    private Object eagerInstantiate(@NotNull Binding<?> binding, @NotNull Context<?> eagerContext) {
+    private Object eagerInstantiate(@NotNull Binding<?> binding, @NotNull EagerProvisionContext eager) {
         Provider<?> provider = binding.getProvider();
 
         if (provider instanceof SingletonProvider && ((SingletonProvider<?>) provider).isEager()) {
-            return ((SingletonProvider<?>) provider).provideWithoutInjecting(eagerContext);
+            return ((SingletonProvider<?>) provider).provideWithoutInjecting(eager.view());
         }
 
         if (provider instanceof MemoizingProvider) {
@@ -224,10 +224,18 @@ public class InfuseInjector implements Injector {
         }
 
         if (provider instanceof InstanceProvider) {
-            return ((InstanceProvider<?>) provider).provideWithoutInjecting(eagerContext);
+            return ((InstanceProvider<?>) provider).provideWithoutInjecting(eager.view());
         }
 
-        return provider.provide(eagerContext);
+        if (provider instanceof Provider.ContextViewAware) {
+            @SuppressWarnings("unchecked")
+            Provider.ContextViewAware<Object> viewAware = (Provider.ContextViewAware<Object>) provider;
+            return viewAware.provide(eager.view());
+        }
+
+        @SuppressWarnings("unchecked")
+        Provider<Object> typed = (Provider<Object>) provider;
+        return typed.provide(eager.context());
     }
 
     @SuppressWarnings("unchecked")
@@ -1270,6 +1278,47 @@ public class InfuseInjector implements Injector {
             }
 
             return null;
+        }
+    }
+
+    private static final class EagerProvisionContext {
+        private static final Annotation[] NO_ANNOTATIONS = new Annotation[0];
+
+        private final Class<?> type;
+        private final Object object;
+        private final Injector injector;
+        private final ContextView<Object> view;
+        private Context<?> context;
+
+        private EagerProvisionContext(Class<?> type, Object object, Injector injector) {
+            this.type = Objects.requireNonNull(type, "type");
+            this.object = Objects.requireNonNull(object, "object");
+            this.injector = Objects.requireNonNull(injector, "injector");
+            @SuppressWarnings("unchecked")
+            Class<Object> viewType = (Class<Object>) this.type;
+            this.view = ContextView.of(viewType, this.object, this.injector, ElementType.FIELD, "eager",
+                    NO_ANNOTATIONS);
+        }
+
+        private ContextView<?> view() {
+            return view;
+        }
+
+        private Context<?> context() {
+            if (context == null) {
+                @SuppressWarnings("unchecked")
+                Class<Object> ctxType = (Class<Object>) type;
+                context = Context.borrow(ctxType, object, injector, ElementType.FIELD, "eager", NO_ANNOTATIONS);
+            }
+
+            return context;
+        }
+
+        private void release() {
+            if (context != null) {
+                context.release();
+                context = null;
+            }
         }
     }
 

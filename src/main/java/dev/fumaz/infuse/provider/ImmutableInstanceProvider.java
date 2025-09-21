@@ -1,6 +1,7 @@
 package dev.fumaz.infuse.provider;
 
 import dev.fumaz.infuse.context.Context;
+import dev.fumaz.infuse.context.ContextView;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -8,7 +9,7 @@ import org.jetbrains.annotations.Nullable;
  *
  * @param <T> the type of the class
  */
-public class ImmutableInstanceProvider<T> implements Provider<T> {
+public class ImmutableInstanceProvider<T> implements Provider<T>, Provider.ContextViewAware<T> {
 
     private final @Nullable T instance;
 
@@ -18,6 +19,11 @@ public class ImmutableInstanceProvider<T> implements Provider<T> {
 
     @Override
     public @Nullable T provide(Context<?> context) {
+        return instance;
+    }
+
+    @Override
+    public @Nullable T provide(ContextView<?> context) {
         return instance;
     }
 

@@ -1,9 +1,11 @@
 package dev.fumaz.infuse.scope;
 
 import dev.fumaz.infuse.context.Context;
+import dev.fumaz.infuse.context.ContextView;
 import dev.fumaz.infuse.injector.InfuseInjector;
 import dev.fumaz.infuse.provider.InstanceProvider;
 import dev.fumaz.infuse.provider.Provider;
+import dev.fumaz.infuse.provider.Provider.ContextViewAware;
 import dev.fumaz.infuse.provider.SingletonProvider;
 import org.jetbrains.annotations.NotNull;
 
@@ -15,7 +17,7 @@ import java.util.function.Supplier;
 /**
  * Memoizes the result of a delegate provider, behaving like a singleton while deferring instantiation to the delegate.
  */
-public final class MemoizingProvider<T> implements Provider<T> {
+public final class MemoizingProvider<T> implements Provider<T>, Provider.ContextViewAware<T> {
 
     private final Class<T> type;
     private final Provider<T> delegate;
@@ -31,28 +33,29 @@ public final class MemoizingProvider<T> implements Provider<T> {
 
     @Override
     public T provide(Context<?> context) {
-        return getOrCreate(() -> delegate.provide(context));
+        return provide((ContextView<?>) context);
+    }
+
+    @Override
+    public T provide(ContextView<?> context) {
+        return getOrCreate(() -> supplyFromDelegate(context));
     }
 
     public T provideWithoutInjecting(InfuseInjector injector) {
         Annotation[] annotations = new Annotation[0];
-        Context<?> eagerContext = Context.borrow(type, injector, injector, ElementType.FIELD, "eager", annotations);
+        ContextView<T> eagerView = ContextView.of(type, injector, injector, ElementType.FIELD, "eager", annotations);
 
-        try {
-            return getOrCreate(() -> {
-                if (delegate instanceof SingletonProvider) {
-                    return ((SingletonProvider<T>) delegate).provideWithoutInjecting(eagerContext);
-                }
+        return getOrCreate(() -> {
+            if (delegate instanceof SingletonProvider) {
+                return ((SingletonProvider<T>) delegate).provideWithoutInjecting(eagerView);
+            }
 
-                if (delegate instanceof InstanceProvider) {
-                    return ((InstanceProvider<T>) delegate).provideWithoutInjecting(eagerContext);
-                }
+            if (delegate instanceof InstanceProvider) {
+                return ((InstanceProvider<T>) delegate).provideWithoutInjecting(eagerView);
+            }
 
-                return delegate.provide(eagerContext);
-            });
-        } finally {
-            eagerContext.release();
-        }
+            return supplyFromDelegate(eagerView);
+        });
     }
 
     public boolean isEager() {
@@ -79,6 +82,25 @@ public final class MemoizingProvider<T> implements Provider<T> {
             }
 
             return local;
+        }
+    }
+
+    private T supplyFromDelegate(ContextView<?> context) {
+        if (delegate instanceof ContextViewAware) {
+            @SuppressWarnings("unchecked")
+            ContextViewAware<T> viewAware = (ContextViewAware<T>) delegate;
+            return viewAware.provide(context);
+        }
+
+        if (context instanceof Context) {
+            return delegate.provide((Context<?>) context);
+        }
+
+        Context<?> borrowed = Context.borrow(context);
+        try {
+            return delegate.provide(borrowed);
+        } finally {
+            borrowed.release();
         }
     }
 }

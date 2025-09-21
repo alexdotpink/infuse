@@ -1,6 +1,7 @@
 package dev.fumaz.infuse.provider;
 
 import dev.fumaz.infuse.context.Context;
+import dev.fumaz.infuse.context.ContextView;
 import dev.fumaz.infuse.injector.InfuseInjector;
 import org.jetbrains.annotations.NotNull;
 
@@ -11,7 +12,7 @@ import java.util.function.Supplier;
  *
  * @param <T> the type of the class
  */
-public class SingletonProvider<T> implements Provider<T> {
+public class SingletonProvider<T> implements Provider<T>, Provider.ContextViewAware<T> {
 
     private final @NotNull Class<T> type;
     private final boolean eager;
@@ -25,10 +26,15 @@ public class SingletonProvider<T> implements Provider<T> {
 
     @Override
     public @NotNull T provide(Context<?> context) {
+        return provide((ContextView<?>) context);
+    }
+
+    @Override
+    public @NotNull T provide(ContextView<?> context) {
         return getOrCreate(() -> context.getInjector().construct(type));
     }
 
-    public @NotNull T provideWithoutInjecting(Context<?> context) {
+    public @NotNull T provideWithoutInjecting(ContextView<?> context) {
         return getOrCreate(() -> ((InfuseInjector) context.getInjector()).constructWithoutInjecting(type));
     }
 

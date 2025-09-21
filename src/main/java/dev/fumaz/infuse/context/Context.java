@@ -13,7 +13,7 @@ import java.util.Deque;
  *
  * @param <T> the type of the class being injected
  */
-public final class Context<T> {
+public final class Context<T> implements ContextView<T> {
 
     private static final ThreadLocal<Deque<Context<?>>> POOL = ThreadLocal.withInitial(ArrayDeque::new);
     private static final Annotation[] EMPTY_ANNOTATIONS = new Annotation[0];
@@ -54,6 +54,11 @@ public final class Context<T> {
         return context;
     }
 
+    public static <T> @NotNull Context<T> borrow(@NotNull ContextView<T> view) {
+        return borrow(view.getType(), view.getObject(), view.getInjector(), view.getElement(), view.getName(),
+                view.getAnnotations());
+    }
+
     public @NotNull Context<T> detach() {
         this.pooled = false;
         return this;
@@ -88,6 +93,7 @@ public final class Context<T> {
         this.pooled = false;
     }
 
+    @Override
     public @NotNull Class<T> getType() {
         Class<T> current = type;
         if (current == null) {
@@ -96,6 +102,7 @@ public final class Context<T> {
         return current;
     }
 
+    @Override
     public @NotNull Object getObject() {
         Object current = object;
         if (current == null) {
@@ -104,6 +111,7 @@ public final class Context<T> {
         return current;
     }
 
+    @Override
     public @NotNull Injector getInjector() {
         Injector current = injector;
         if (current == null) {
@@ -112,6 +120,7 @@ public final class Context<T> {
         return current;
     }
 
+    @Override
     public @NotNull ElementType getElement() {
         ElementType current = element;
         if (current == null) {
@@ -120,6 +129,7 @@ public final class Context<T> {
         return current;
     }
 
+    @Override
     public @NotNull String getName() {
         String current = name;
         if (current == null) {
@@ -128,6 +138,7 @@ public final class Context<T> {
         return current;
     }
 
+    @Override
     public Annotation[] getAnnotations() {
         Annotation[] current = annotations;
         if (current == null) {

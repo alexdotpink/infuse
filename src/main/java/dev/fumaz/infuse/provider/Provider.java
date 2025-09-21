@@ -1,6 +1,7 @@
 package dev.fumaz.infuse.provider;
 
 import dev.fumaz.infuse.context.Context;
+import dev.fumaz.infuse.context.ContextView;
 import dev.fumaz.infuse.injector.Injector;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -35,6 +36,16 @@ public interface Provider<T> {
     @Nullable T provide(Context<?> context);
 
     default @Nullable T provide(Injector injector, Object calling) {
+        if (this instanceof ContextViewAware) {
+            @SuppressWarnings("unchecked")
+            ContextViewAware<T> lightweight = (ContextViewAware<T>) this;
+            @SuppressWarnings("unchecked")
+            Class<Object> type = (Class<Object>) calling.getClass();
+            ContextView<Object> view = ContextView.of(type, calling, injector, ElementType.FIELD,
+                    "field", new Annotation[0]);
+            return lightweight.provide(view);
+        }
+
         Context<?> context = Context.borrow(calling.getClass(), calling, injector, ElementType.FIELD, "field",
                 new Annotation[0]);
         try {
@@ -44,4 +55,8 @@ public interface Provider<T> {
         }
     }
 
+    interface ContextViewAware<T> {
+
+        @Nullable T provide(ContextView<?> context);
+    }
 }
