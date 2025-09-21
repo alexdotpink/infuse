@@ -49,4 +49,23 @@ public abstract class InfuseModule implements Module {
         });
     }
 
+    protected final void install(@NotNull Module module) {
+        Objects.requireNonNull(module, "module");
+
+        if (module == this) {
+            throw new IllegalArgumentException("A module cannot install itself");
+        }
+
+        module.reset();
+        module.configure();
+
+        List<Binding<?>> produced = new ArrayList<>(module.getBindings());
+        bindings.addAll(produced);
+
+        try {
+            module.getBindings().clear();
+        } catch (UnsupportedOperationException ignored) {
+        }
+    }
+
 }
