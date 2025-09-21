@@ -85,6 +85,7 @@ public class InfuseInjector implements Injector {
     private final @NotNull List<Module> modules;
     private final @NotNull ConcurrentMap<Class<?>, ConstructorCache> constructorCaches;
     private final @NotNull ConcurrentMap<Constructor<?>, ConstructorArgumentPlan> constructorArgumentPlans;
+    private final @NotNull ConcurrentMap<Constructor<?>, MethodHandle> constructorInvokers;
     private final @NotNull BindingRegistry bindingRegistry;
     private final @NotNull ConcurrentMap<BindingQueryKey, List<Binding<?>>> bindingViewCache;
     private final @NotNull Set<NegativeBindingKey> negativeBindingCache;
@@ -99,6 +100,7 @@ public class InfuseInjector implements Injector {
         this.modules = modules;
         this.constructorCaches = new ConcurrentHashMap<>();
         this.constructorArgumentPlans = new ConcurrentHashMap<>();
+        this.constructorInvokers = new ConcurrentHashMap<>();
         this.bindingRegistry = new BindingRegistry();
         this.bindingViewCache = new ConcurrentHashMap<>();
         this.negativeBindingCache = ConcurrentHashMap.newKeySet();
@@ -473,10 +475,11 @@ public class InfuseInjector implements Injector {
     @Override
     public <T> T construct(@NotNull Class<T> type, @NotNull Object... args) {
         Constructor<T> constructor = resolveConstructor(type, args);
-        constructor.setAccessible(true);
 
         try {
-            T t = constructor.newInstance(getConstructorArguments(constructor, args));
+            Object[] resolved = getConstructorArguments(constructor, args);
+            @SuppressWarnings("unchecked")
+            T t = (T) instantiateConstructor(constructor, resolved);
 
             ResolutionScopeHandle scope = resolutionScopes.enter(t);
 
@@ -487,33 +490,42 @@ public class InfuseInjector implements Injector {
             }
 
             return t;
-        } catch (Exception e) {
+        } catch (Throwable throwable) {
+            if (throwable instanceof Error) {
+                throw (Error) throwable;
+            }
+
+            Throwable cause = unwrapConstructorThrowable(throwable);
             System.err.println("Failed to construct " + type.getName());
-            e.printStackTrace();
-            throw new ProvisionException("Failed to construct " + type.getName(), e);
+            cause.printStackTrace();
+            throw new ProvisionException("Failed to construct " + type.getName(), cause);
         }
     }
 
     public <T> T constructWithoutInjecting(@NotNull Class<T> type, @NotNull Object... args) {
         Constructor<T> constructor = resolveConstructor(type, args);
-        constructor.setAccessible(true);
 
         try {
-            T t = constructor.newInstance(getConstructorArguments(constructor, args));
-
+            Object[] resolved = getConstructorArguments(constructor, args);
+            @SuppressWarnings("unchecked")
+            T t = (T) instantiateConstructor(constructor, resolved);
             return t;
-        } catch (Exception e) {
+        } catch (Throwable throwable) {
+            if (throwable instanceof Error) {
+                throw (Error) throwable;
+            }
+
+            Throwable cause = unwrapConstructorThrowable(throwable);
             System.err.println("Failed to construct without injecting " + type.getName());
-            e.printStackTrace();
-            throw new ProvisionException("Failed to construct without injecting " + type.getName(), e);
+            cause.printStackTrace();
+            throw new ProvisionException("Failed to construct without injecting " + type.getName(), cause);
         }
     }
 
     public <T> T construct(@NotNull Constructor<T> constructor) {
-        constructor.setAccessible(true);
-
         try {
-            T instance = constructor.newInstance(getConstructorArguments(constructor));
+            Object[] resolved = getConstructorArguments(constructor);
+            T instance = instantiateConstructor(constructor, resolved);
 
             ResolutionScopeHandle scope = resolutionScopes.enter(instance);
 
@@ -524,10 +536,15 @@ public class InfuseInjector implements Injector {
             }
 
             return instance;
-        } catch (Exception e) {
+        } catch (Throwable throwable) {
+            if (throwable instanceof Error) {
+                throw (Error) throwable;
+            }
+
+            Throwable cause = unwrapConstructorThrowable(throwable);
             System.err.println("Failed to construct via constructor " + constructor.toGenericString());
-            e.printStackTrace();
-            throw new ProvisionException("Failed to construct via constructor " + constructor.toGenericString(), e);
+            cause.printStackTrace();
+            throw new ProvisionException("Failed to construct via constructor " + constructor.toGenericString(), cause);
         }
     }
 
@@ -697,6 +714,45 @@ public class InfuseInjector implements Injector {
 
     private ConstructorArgumentPlan buildConstructorArgumentPlan(@NotNull Constructor<?> constructor) {
         return ConstructorArgumentPlan.create(this, constructor);
+    }
+
+    private <T> T instantiateConstructor(@NotNull Constructor<T> constructor, @NotNull Object[] arguments) throws Throwable {
+        MethodHandle invoker = constructorInvokers.computeIfAbsent(constructor, this::createConstructorInvoker);
+        @SuppressWarnings("unchecked")
+        T instance = (T) invoker.invoke(arguments);
+        return instance;
+    }
+
+    private MethodHandle createConstructorInvoker(@NotNull Constructor<?> constructor) {
+        constructor.setAccessible(true);
+
+        MethodHandle handle = unreflectConstructor(constructor);
+        handle = handle.asSpreader(Object[].class, constructor.getParameterCount());
+        return handle.asType(MethodType.methodType(Object.class, Object[].class));
+    }
+
+    private MethodHandle unreflectConstructor(@NotNull Constructor<?> constructor) {
+        try {
+            return lookupFor(constructor.getDeclaringClass()).unreflectConstructor(constructor);
+        } catch (IllegalAccessException firstFailure) {
+            try {
+                return ROOT_LOOKUP.unreflectConstructor(constructor);
+            } catch (IllegalAccessException secondFailure) {
+                IllegalStateException exception = new IllegalStateException(
+                        "Unable to access constructor handle for " + constructor, secondFailure);
+                exception.addSuppressed(firstFailure);
+                throw exception;
+            }
+        }
+    }
+
+    private Throwable unwrapConstructorThrowable(@NotNull Throwable throwable) {
+        if (throwable instanceof InvocationTargetException) {
+            Throwable target = ((InvocationTargetException) throwable).getTargetException();
+            return target != null ? target : throwable;
+        }
+
+        return throwable;
     }
 
     private void injectVariables(Object object) {
