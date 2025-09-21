@@ -1,6 +1,5 @@
 package dev.fumaz.infuse.module;
 
-import dev.fumaz.infuse.annotation.Singleton;
 import dev.fumaz.infuse.bind.Binding;
 import dev.fumaz.infuse.bind.BindingBuilder;
 import dev.fumaz.infuse.reflection.Reflections;
@@ -8,6 +7,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public abstract class InfuseModule implements Module {
 
@@ -28,17 +28,25 @@ public abstract class InfuseModule implements Module {
     }
 
     public void bindPackage(ClassLoader classLoader, String name) {
-        Reflections.consume(classLoader, name, true, type -> {
-            if (type.isAnnotationPresent(Singleton.class)) {
-                if (type.getAnnotation(Singleton.class).lazy()) {
-                    bind(type).toSingleton();
-                } else {
-                    bind(type).toEagerSingleton();
+        bindPackage(classLoader, name, PackageScanOptions.defaults());
+    }
+
+    public void bindPackage(ClassLoader classLoader, String name, PackageScanOptions options) {
+        Objects.requireNonNull(classLoader, "classLoader");
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(options, "options");
+
+        Reflections.consume(classLoader, name, options.isRecursive(), type -> {
+            if (!options.getFilter().test(type)) {
+                return;
+            }
+
+            for (PackageBindingRule rule : options.getRules()) {
+                if (rule.apply(this, type)) {
+                    return;
                 }
             }
         });
-
-        // TODO: Add more annotations
     }
 
 }

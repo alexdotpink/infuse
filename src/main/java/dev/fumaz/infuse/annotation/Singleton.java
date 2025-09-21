@@ -8,6 +8,7 @@ import java.lang.annotation.*;
 @Target({ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
+@Scope("singleton")
 public @interface Singleton {
 
     boolean lazy() default false;
