@@ -2116,19 +2116,27 @@ public class InfuseInjector implements Injector {
                 }
 
                 for (Method method : current.getDeclaredMethods()) {
-                    if (method.isAnnotationPresent(Inject.class)) {
-                        ensureAccessible(method);
+                    boolean inject = method.isAnnotationPresent(Inject.class);
+                    boolean postConstruct = !inject && method.isAnnotationPresent(PostConstruct.class);
+                    boolean preDestroy = !inject && !postConstruct && method.isAnnotationPresent(PreDestroy.class);
+                    boolean postInject = !inject && !postConstruct && !preDestroy
+                            && method.isAnnotationPresent(PostInject.class);
+
+                    if (!inject && !postConstruct && !preDestroy && !postInject) {
+                        continue;
+                    }
+
+                    ensureAccessible(method);
+
+                    if (inject) {
                         injectableMethods.add(MethodInjectionPoint.create(method, 0));
-                    } else if (method.isAnnotationPresent(PostConstruct.class)) {
-                        ensureAccessible(method);
+                    } else if (postConstruct) {
                         PostConstruct annotation = method.getAnnotation(PostConstruct.class);
                         int priority = annotation == null ? 0 : annotation.priority();
                         postConstructMethods.add(MethodInjectionPoint.create(method, priority));
-                    } else if (method.isAnnotationPresent(PreDestroy.class)) {
-                        ensureAccessible(method);
+                    } else if (preDestroy) {
                         preDestroyMethods.add(MethodInjectionPoint.create(method, 0));
-                    } else if (method.isAnnotationPresent(PostInject.class)) {
-                        ensureAccessible(method);
+                    } else if (postInject) {
                         PostInject annotation = method.getAnnotation(PostInject.class);
                         int priority = annotation == null ? 0 : annotation.priority();
                         postInjectMethods.add(MethodInjectionPoint.create(method, priority));
