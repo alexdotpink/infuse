@@ -4,6 +4,8 @@ import dev.fumaz.infuse.context.Context;
 import dev.fumaz.infuse.injector.InfuseInjector;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.function.Supplier;
+
 /**
  * A {@link SingletonProvider} is a {@link Provider} that provides a singleton instance.
  *
@@ -13,7 +15,8 @@ public class SingletonProvider<T> implements Provider<T> {
 
     private final @NotNull Class<T> type;
     private final boolean eager;
-    private T instance;
+    private volatile T instance;
+    private final Object lock = new Object();
 
     public SingletonProvider(@NotNull Class<T> type, boolean eager) {
         this.type = type;
@@ -22,29 +25,39 @@ public class SingletonProvider<T> implements Provider<T> {
 
     @Override
     public @NotNull T provide(Context<?> context) {
-        if (instance == null) {
-            instance = context.getInjector().construct(type);
-            validate();
-        }
-
-        return instance;
+        return getOrCreate(() -> context.getInjector().construct(type));
     }
 
     public @NotNull T provideWithoutInjecting(Context<?> context) {
-        if (instance == null) {
-            instance = ((InfuseInjector) context.getInjector()).constructWithoutInjecting(type);
-            validate();
-        }
-
-        return instance;
+        return getOrCreate(() -> ((InfuseInjector) context.getInjector()).constructWithoutInjecting(type));
     }
 
     public boolean isEager() {
         return eager;
     }
 
-    private void validate() {
-        if (instance != null) {
+    private @NotNull T getOrCreate(Supplier<T> supplier) {
+        T local = instance;
+
+        if (local != null) {
+            return local;
+        }
+
+        synchronized (lock) {
+            local = instance;
+
+            if (local == null) {
+                local = supplier.get();
+                validate(local);
+                instance = local;
+            }
+
+            return local;
+        }
+    }
+
+    private void validate(T candidate) {
+        if (candidate != null) {
             return;
         }
 
