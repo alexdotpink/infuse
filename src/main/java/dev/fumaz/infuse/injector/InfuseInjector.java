@@ -2,10 +2,16 @@ package dev.fumaz.infuse.injector;
 
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.invoke.VarHandle;
 import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.util.AbstractList;
 import java.util.ArrayDeque;
@@ -54,6 +60,20 @@ import dev.fumaz.infuse.util.InjectionUtils;
 public class InfuseInjector implements Injector {
 
     private static final int NEGATIVE_BINDING_CACHE_LIMIT = 256;
+    private static final MethodHandles.Lookup ROOT_LOOKUP = MethodHandles.lookup();
+    private static final ConcurrentMap<Class<?>, MethodHandles.Lookup> PRIVATE_LOOKUPS = new ConcurrentHashMap<>();
+
+    private static MethodHandles.Lookup lookupFor(Class<?> type) {
+        return PRIVATE_LOOKUPS.computeIfAbsent(type, InfuseInjector::createLookupFor);
+    }
+
+    private static MethodHandles.Lookup createLookupFor(Class<?> type) {
+        try {
+            return MethodHandles.privateLookupIn(type, ROOT_LOOKUP);
+        } catch (IllegalAccessException | RuntimeException e) {
+            return ROOT_LOOKUP;
+        }
+    }
 
     private final @Nullable Injector parent;
     private final @NotNull List<Module> modules;
@@ -147,23 +167,15 @@ public class InfuseInjector implements Injector {
                 resolutionScopes.exit(scope);
             }
 
-            for (Method method : plan.getPostInjectMethods()) {
-                PostInject annotation = method.getAnnotation(PostInject.class);
-                int priority = annotation == null ? 0 : annotation.priority();
-                postInjectInvocations.add(new PostInjectInvocation(singleton, method, priority));
+            for (MethodInjectionPoint point : plan.getPostInjectMethods()) {
+                postInjectInvocations.add(new PostInjectInvocation(singleton, point));
             }
         }
 
         postInjectInvocations.sort(Comparator.comparingInt(PostInjectInvocation::priority));
 
         for (PostInjectInvocation invocation : postInjectInvocations) {
-            try {
-                injectMethod(invocation.target(), invocation.method());
-            } catch (Exception e) {
-                System.err.println("Failed to eagerly inject method " + invocation.method().getName() + " in "
-                        + invocation.target().getClass().getName());
-                throw e;
-            }
+            invokeMethod(invocation.target(), invocation.point(), "Failed to eagerly inject method ");
         }
 
         for (EagerInstanceRecord eagerSingleton : eagerSingletons) {
@@ -684,106 +696,80 @@ public class InfuseInjector implements Injector {
     }
 
     private void injectVariables(Object object) {
-        getInjectionPlan(object.getClass())
-                .getInjectableFields()
-                .forEach(field -> {
-                    try {
-                        Context<?> fieldContext = Context.borrow(object.getClass(), object, this, ElementType.FIELD,
-                                field.getName(), field::getAnnotations);
-                        Object value;
+        InjectionPlan plan = getInjectionPlan(object.getClass());
 
-                        try {
-                            value = provide(field.getType(), fieldContext);
+        for (FieldInjectionPoint point : plan.getInjectableFields()) {
+            Field field = point.field();
 
-                            if (value == null) {
-                                if (InjectionUtils.isOptional(field)) {
-                                    if (field.getType().isPrimitive()) {
-                                        return;
-                                    }
+            try {
+                Context<?> fieldContext = Context.borrow(object.getClass(), object, this, ElementType.FIELD,
+                        field.getName(), field::getAnnotations);
 
-                                    field.set(object, null);
-                                    return;
-                                }
-                            }
+                try {
+                    Object value = provide(point.type(), fieldContext);
 
-                            field.set(object, value);
-                        } finally {
-                            fieldContext.release();
+                    if (value == null && point.optional()) {
+                        if (point.primitive()) {
+                            continue;
                         }
-                    } catch (Exception e) {
-                        String message = "Failed to inject field " + field.getName() + " in "
-                                + object.getClass().getName();
-                        System.err.println(message);
-                        throw new ProvisionException(message, e);
+
+                        point.set(object, null);
+                        continue;
                     }
-                });
+
+                    point.set(object, value);
+                } finally {
+                    fieldContext.release();
+                }
+            } catch (Throwable e) {
+                String message = "Failed to inject field " + field.getName() + " in "
+                        + object.getClass().getName();
+                System.err.println(message);
+                throw new ProvisionException(message, e);
+            }
+        }
     }
 
     private void injectMethods(Object object) {
-        getInjectionPlan(object.getClass())
-                .getInjectableMethods()
-                .forEach(method -> {
-                    try {
-                        injectMethod(object, method);
-                    } catch (Exception e) {
-                        String message = "Failed to inject method " + method.getName() + " in "
-                                + object.getClass().getName();
-                        System.err.println(message);
-                        throw new ProvisionException(message, e);
-                    }
-                });
+        InjectionPlan plan = getInjectionPlan(object.getClass());
+
+        for (MethodInjectionPoint point : plan.getInjectableMethods()) {
+            invokeMethod(object, point, "Failed to inject method ");
+        }
     }
 
     private void preDestroy(Object object) {
-        getInjectionPlan(object.getClass())
-                .getPreDestroyMethods()
-                .forEach(method -> {
-                    try {
-                        injectMethod(object, method);
-                    } catch (Exception e) {
-                        String message = "Failed to call pre-destroy method " + method.getName() + " in "
-                                + object.getClass().getName();
-                        System.err.println(message);
-                        throw new ProvisionException(message, e);
-                    }
-                });
+        InjectionPlan plan = getInjectionPlan(object.getClass());
+
+        for (MethodInjectionPoint point : plan.getPreDestroyMethods()) {
+            invokeMethod(object, point, "Failed to call pre-destroy method ");
+        }
     }
 
     private void postInject(Object object) {
-        getInjectionPlan(object.getClass())
-                .getPostInjectMethods()
-                .forEach(method -> {
-                    try {
-                        injectMethod(object, method);
-                    } catch (Exception e) {
-                        String message = "Failed to call post-inject method " + method.getName() + " in "
-                                + object.getClass().getName();
-                        System.err.println(message);
-                        throw new ProvisionException(message, e);
-                    }
-                });
+        InjectionPlan plan = getInjectionPlan(object.getClass());
+
+        for (MethodInjectionPoint point : plan.getPostInjectMethods()) {
+            invokeMethod(object, point, "Failed to call post-inject method ");
+        }
     }
 
     private void postConstruct(Object object) {
-        getInjectionPlan(object.getClass())
-                .getPostConstructMethods()
-                .forEach(method -> {
-                    try {
-                        injectMethod(object, method);
-                    } catch (Exception e) {
-                        String message = "Failed to call post-construct method " + method.getName() + " in "
-                                + object.getClass().getName();
-                        System.err.println(message);
-                        throw new ProvisionException(message, e);
-                    }
-                });
+        InjectionPlan plan = getInjectionPlan(object.getClass());
+
+        for (MethodInjectionPoint point : plan.getPostConstructMethods()) {
+            invokeMethod(object, point, "Failed to call post-construct method ");
+        }
     }
 
-    private void injectMethod(Object object, Method method) {
+    private void invokeMethod(Object object, MethodInjectionPoint point, String failurePrefix) {
+        Method method = point.method();
+
         try {
-            method.invoke(object, getMethodArguments(method));
-        } catch (Exception e) {
-            String message = "Failed to inject method " + method.getName() + " in " + object.getClass().getName();
+            Object[] arguments = getMethodArguments(method);
+            point.invoke(object, arguments);
+        } catch (Throwable e) {
+            String message = failurePrefix + method.getName() + " in " + object.getClass().getName();
             System.err.println(message);
             throw new ProvisionException(message, e);
         }
@@ -1348,21 +1334,21 @@ public class InfuseInjector implements Injector {
 
     private static final class PostInjectInvocation {
         private final Object target;
-        private final Method method;
+        private final MethodInjectionPoint point;
         private final int priority;
 
-        private PostInjectInvocation(Object target, Method method, int priority) {
+        private PostInjectInvocation(Object target, MethodInjectionPoint point) {
             this.target = target;
-            this.method = method;
-            this.priority = priority;
+            this.point = point;
+            this.priority = point.priority();
         }
 
         private Object target() {
             return target;
         }
 
-        private Method method() {
-            return method;
+        private MethodInjectionPoint point() {
+            return point;
         }
 
         private int priority() {
@@ -1900,12 +1886,139 @@ public class InfuseInjector implements Injector {
         }
     }
 
+    private static final class FieldInjectionPoint {
+        private final Field field;
+        private final @Nullable VarHandle handle;
+        private final boolean optional;
+        private final boolean primitive;
+        private final boolean isStatic;
+
+        private FieldInjectionPoint(Field field,
+                                    @Nullable VarHandle handle,
+                                    boolean optional,
+                                    boolean primitive,
+                                    boolean isStatic) {
+            this.field = field;
+            this.handle = handle;
+            this.optional = optional;
+            this.primitive = primitive;
+            this.isStatic = isStatic;
+        }
+
+        private static FieldInjectionPoint create(Field field) {
+            boolean optional = InjectionUtils.isOptional(field);
+            boolean primitive = field.getType().isPrimitive();
+            boolean isStatic = Modifier.isStatic(field.getModifiers());
+            VarHandle handle = null;
+
+            try {
+                MethodHandles.Lookup lookup = lookupFor(field.getDeclaringClass());
+                handle = lookup.unreflectVarHandle(field);
+            } catch (IllegalAccessException | RuntimeException ignored) {
+            }
+
+            return new FieldInjectionPoint(field, handle, optional, primitive, isStatic);
+        }
+
+        private Field field() {
+            return field;
+        }
+
+        private Class<?> type() {
+            return field.getType();
+        }
+
+        private boolean optional() {
+            return optional;
+        }
+
+        private boolean primitive() {
+            return primitive;
+        }
+
+        private void set(Object target, Object value) throws Throwable {
+            if (handle != null) {
+                if (isStatic) {
+                    handle.set(value);
+                } else {
+                    handle.set(target, value);
+                }
+
+                return;
+            }
+
+            Object receiver = isStatic ? null : target;
+            field.set(receiver, value);
+        }
+    }
+
+    private static final class MethodInjectionPoint {
+        private final Method method;
+        private final @Nullable MethodHandle handle;
+        private final boolean isStatic;
+        private final int priority;
+
+        private MethodInjectionPoint(Method method,
+                                     @Nullable MethodHandle handle,
+                                     boolean isStatic,
+                                     int priority) {
+            this.method = method;
+            this.handle = handle;
+            this.isStatic = isStatic;
+            this.priority = priority;
+        }
+
+        private static MethodInjectionPoint create(Method method, int priority) {
+            boolean isStatic = Modifier.isStatic(method.getModifiers());
+            MethodHandle handle = null;
+
+            try {
+                MethodHandles.Lookup lookup = lookupFor(method.getDeclaringClass());
+                MethodHandle base = lookup.unreflect(method);
+                MethodHandle spread = base.asSpreader(Object[].class, method.getParameterCount());
+
+                if (isStatic) {
+                    spread = MethodHandles.dropArguments(spread, 0, Object.class);
+                }
+
+                MethodType targetType = MethodType.methodType(method.getReturnType(), Object.class, Object[].class);
+                handle = spread.asType(targetType);
+            } catch (IllegalAccessException | RuntimeException ignored) {
+            }
+
+            return new MethodInjectionPoint(method, handle, isStatic, priority);
+        }
+
+        private Method method() {
+            return method;
+        }
+
+        private int priority() {
+            return priority;
+        }
+
+        private void invoke(Object target, Object[] arguments) throws Throwable {
+            if (handle != null) {
+                handle.invoke(target, arguments);
+                return;
+            }
+
+            Object receiver = isStatic ? null : target;
+
+            try {
+                method.invoke(receiver, arguments);
+            } catch (InvocationTargetException e) {
+                throw e.getCause();
+            }
+        }
+    }
+
     private static class InjectionPlan {
-        private final List<Field> injectableFields;
-        private final List<Method> injectableMethods;
-        private final List<Method> postConstructMethods;
-        private final List<Method> preDestroyMethods;
-        private final List<Method> postInjectMethods;
+        private final List<FieldInjectionPoint> injectableFields;
+        private final List<MethodInjectionPoint> injectableMethods;
+        private final List<MethodInjectionPoint> postConstructMethods;
+        private final List<MethodInjectionPoint> preDestroyMethods;
+        private final List<MethodInjectionPoint> postInjectMethods;
 
         public InjectionPlan(Class<?> clazz) {
             this.injectableFields = new ArrayList<>();
@@ -1918,48 +2031,52 @@ public class InfuseInjector implements Injector {
                 for (Field field : current.getDeclaredFields()) {
                     if (field.isAnnotationPresent(Inject.class)) {
                         ensureAccessible(field);
-                        injectableFields.add(field);
+                        injectableFields.add(FieldInjectionPoint.create(field));
                     }
                 }
 
                 for (Method method : current.getDeclaredMethods()) {
                     if (method.isAnnotationPresent(Inject.class)) {
                         ensureAccessible(method);
-                        injectableMethods.add(method);
+                        injectableMethods.add(MethodInjectionPoint.create(method, 0));
                     } else if (method.isAnnotationPresent(PostConstruct.class)) {
                         ensureAccessible(method);
-                        postConstructMethods.add(method);
+                        PostConstruct annotation = method.getAnnotation(PostConstruct.class);
+                        int priority = annotation == null ? 0 : annotation.priority();
+                        postConstructMethods.add(MethodInjectionPoint.create(method, priority));
                     } else if (method.isAnnotationPresent(PreDestroy.class)) {
                         ensureAccessible(method);
-                        preDestroyMethods.add(method);
+                        preDestroyMethods.add(MethodInjectionPoint.create(method, 0));
                     } else if (method.isAnnotationPresent(PostInject.class)) {
                         ensureAccessible(method);
-                        postInjectMethods.add(method);
+                        PostInject annotation = method.getAnnotation(PostInject.class);
+                        int priority = annotation == null ? 0 : annotation.priority();
+                        postInjectMethods.add(MethodInjectionPoint.create(method, priority));
                     }
                 }
             }
 
-            postConstructMethods.sort(Comparator.comparingInt(m -> m.getAnnotation(PostConstruct.class).priority()));
-            postInjectMethods.sort(Comparator.comparingInt(m -> m.getAnnotation(PostInject.class).priority()));
+            postConstructMethods.sort(Comparator.comparingInt(MethodInjectionPoint::priority));
+            postInjectMethods.sort(Comparator.comparingInt(MethodInjectionPoint::priority));
         }
 
-        public List<Field> getInjectableFields() {
+        public List<FieldInjectionPoint> getInjectableFields() {
             return injectableFields;
         }
 
-        public List<Method> getInjectableMethods() {
+        public List<MethodInjectionPoint> getInjectableMethods() {
             return injectableMethods;
         }
 
-        public List<Method> getPostConstructMethods() {
+        public List<MethodInjectionPoint> getPostConstructMethods() {
             return postConstructMethods;
         }
 
-        public List<Method> getPreDestroyMethods() {
+        public List<MethodInjectionPoint> getPreDestroyMethods() {
             return preDestroyMethods;
         }
 
-        public List<Method> getPostInjectMethods() {
+        public List<MethodInjectionPoint> getPostInjectMethods() {
             return postInjectMethods;
         }
 
