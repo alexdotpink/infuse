@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.logging.Logger;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -66,6 +67,7 @@ public class InfuseInjector implements Injector {
     private final @NotNull List<Binding<?>> ownBindings;
     private final @NotNull ScopedInstanceRegistry scopedInstances;
     private final @NotNull ResolutionScopes resolutionScopes;
+    private final boolean customLoggerBinding;
 
     public InfuseInjector(@Nullable Injector parent, @NotNull List<Module> modules) {
         this.parent = parent;
@@ -100,11 +102,11 @@ public class InfuseInjector implements Injector {
         registerBinding(new Binding<>(Injector.class, new InstanceProvider<>(this),
                 BindingQualifier.none(), BindingScope.INSTANCE, false));
 
-        boolean hasCustomLoggerBinding = !bindingRegistry
+        this.customLoggerBinding = !bindingRegistry
                 .find(Logger.class, BindingQualifier.none(), BindingScope.ANY)
                 .isEmpty();
 
-        if (!hasCustomLoggerBinding) {
+        if (!customLoggerBinding) {
             registerBinding(new Binding<>(Logger.class,
                     (context) -> Logger.getLogger(context.getType().getSimpleName()),
                     BindingQualifier.none(), BindingScope.UNSCOPED, false));
@@ -1381,6 +1383,7 @@ public class InfuseInjector implements Injector {
             this.defaultMapping = initialiseDefaultMapping(parameters.length);
         }
 
+        @SuppressWarnings("unchecked")
         private static ConstructorArgumentPlan create(InfuseInjector injector, Constructor<?> constructor) {
             Parameter[] reflectionParameters = constructor.getParameters();
             ConstructorParameter[] parameters = new ConstructorParameter[reflectionParameters.length];
@@ -1389,10 +1392,32 @@ public class InfuseInjector implements Injector {
                 Parameter parameter = reflectionParameters[i];
                 Annotation[] annotations = parameter.getAnnotations();
                 boolean optional = InjectionUtils.isOptional(annotations);
-                Context<?> context = new Context<>(constructor.getDeclaringClass(), injector, injector,
-                        ElementType.CONSTRUCTOR, parameter.getName(), annotations);
+                BindingQualifier qualifier = InjectionUtils.resolveQualifier(annotations);
+                Class<?> parameterType = parameter.getType();
+                Class<?> declaringType = constructor.getDeclaringClass();
 
-                parameters[i] = new ConstructorParameter(parameter.getType(), parameter.getName(), optional, context);
+                Function<InfuseInjector, Object> direct = null;
+
+                if (parameterType == Injector.class && qualifier.isDefault()) {
+                    direct = self -> self;
+                } else if (parameterType == Logger.class
+                        && qualifier.isDefault()
+                        && !injector.customLoggerBinding) {
+                    String loggerName = declaringType.getSimpleName();
+                    direct = ignored -> Logger.getLogger(loggerName);
+                }
+
+                Context<?> context = null;
+
+                if (direct == null) {
+                    @SuppressWarnings("unchecked")
+                    Class<Object> ctxType = (Class<Object>) declaringType;
+                    context = Context.borrow(ctxType, injector, injector, ElementType.CONSTRUCTOR,
+                            parameter.getName(), annotations).detach();
+                }
+
+                parameters[i] = new ConstructorParameter(parameterType, parameter.getName(), optional, context,
+                        direct, declaringType);
             }
 
             return new ConstructorArgumentPlan(parameters);
@@ -1463,15 +1488,22 @@ public class InfuseInjector implements Injector {
         private final boolean primitive;
         private final String name;
         private final Context<?> context;
+        private final Function<InfuseInjector, Object> direct;
         private final Class<?> declaringType;
 
-        private ConstructorParameter(Class<?> type, String name, boolean optional, Context<?> context) {
+        private ConstructorParameter(Class<?> type,
+                                     String name,
+                                     boolean optional,
+                                     @Nullable Context<?> context,
+                                     @Nullable Function<InfuseInjector, Object> direct,
+                                     Class<?> declaringType) {
             this.type = type;
             this.optional = optional;
             this.primitive = type.isPrimitive();
             this.name = name;
             this.context = context;
-            this.declaringType = context.getType();
+            this.direct = direct;
+            this.declaringType = declaringType;
         }
 
         private boolean supports(Object candidate) {
@@ -1489,7 +1521,14 @@ public class InfuseInjector implements Injector {
                         + " cannot target primitive type " + type.getName());
             }
 
-            Object value = injector.provide(type, context);
+            Object value;
+
+            if (direct != null) {
+                value = direct.apply(injector);
+            } else {
+                Context<?> resolverContext = Objects.requireNonNull(context, "context");
+                value = injector.provide(type, resolverContext);
+            }
 
             if (optional && value == null) {
                 return null;
