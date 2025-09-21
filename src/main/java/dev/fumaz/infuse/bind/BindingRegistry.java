@@ -4,40 +4,31 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class BindingRegistry {
 
-    private final Map<Class<?>, TypeIndex> bindings = new LinkedHashMap<>();
-    private final List<Binding<?>> insertionOrder = new ArrayList<>();
+    private final Map<Class<?>, TypeIndex> bindings = new ConcurrentHashMap<>();
+    private final List<Binding<?>> insertionOrder = new CopyOnWriteArrayList<>();
 
-    public synchronized void add(@NotNull Binding<?> binding) {
+    public void add(@NotNull Binding<?> binding) {
         BindingKey key = binding.getKey();
         TypeIndex typeIndex = bindings.computeIfAbsent(key.getType(), ignored -> new TypeIndex());
         QualifierIndex qualifierIndex = typeIndex.qualifiers.computeIfAbsent(key.getQualifier(), ignored -> new QualifierIndex());
-        List<Binding<?>> scopedBindings = qualifierIndex.bindingsForScope(key.getScope());
 
-        if (!scopedBindings.isEmpty()) {
-            boolean existingSupportsCollections = scopedBindings.stream().allMatch(Binding::isCollectionContribution);
-
-            if (!existingSupportsCollections || !binding.isCollectionContribution()) {
-                throw new IllegalStateException("Duplicate binding registered for " + key.describe());
-            }
-        }
-
-        scopedBindings.add(binding);
-        qualifierIndex.recordAddition(binding);
+        qualifierIndex.add(key, binding);
         typeIndex.recordAddition(binding);
         insertionOrder.add(binding);
     }
 
-    public synchronized List<Binding<?>> all() {
+    public List<Binding<?>> all() {
         return new ArrayList<>(insertionOrder);
     }
 
-    public synchronized List<Binding<?>> byType(@NotNull Class<?> type) {
+    public List<Binding<?>> byType(@NotNull Class<?> type) {
         TypeIndex typeIndex = bindings.get(type);
 
         if (typeIndex == null) {
@@ -48,9 +39,9 @@ public final class BindingRegistry {
     }
 
     @SuppressWarnings("unchecked")
-    public synchronized <T> List<Binding<T>> find(@NotNull Class<T> type,
-                                                  @NotNull BindingQualifier qualifier,
-                                                  @NotNull BindingScope scope) {
+    public <T> List<Binding<T>> find(@NotNull Class<T> type,
+                                     @NotNull BindingQualifier qualifier,
+                                     @NotNull BindingScope scope) {
         TypeIndex typeIndex = bindings.get(type);
 
         if (typeIndex == null) {
@@ -65,7 +56,7 @@ public final class BindingRegistry {
 
         List<Binding<?>> source = scope.isAny()
                 ? qualifierIndex.anyBindings()
-                : qualifierIndex.bindingsForScopeOrEmpty(scope);
+                : qualifierIndex.bindingsForScope(scope);
 
         if (source.isEmpty()) {
             return Collections.emptyList();
@@ -80,14 +71,14 @@ public final class BindingRegistry {
         return matches;
     }
 
-    public synchronized boolean isEmpty() {
+    public boolean isEmpty() {
         return insertionOrder.isEmpty();
     }
 
     private static final class TypeIndex {
 
-        private final Map<BindingQualifier, QualifierIndex> qualifiers = new LinkedHashMap<>();
-        private final List<Binding<?>> insertionOrder = new ArrayList<>();
+        private final Map<BindingQualifier, QualifierIndex> qualifiers = new ConcurrentHashMap<>();
+        private final List<Binding<?>> insertionOrder = new CopyOnWriteArrayList<>();
 
         void recordAddition(@NotNull Binding<?> binding) {
             insertionOrder.add(binding);
@@ -100,37 +91,51 @@ public final class BindingRegistry {
 
     private static final class QualifierIndex {
 
-        private final Map<BindingScope, List<Binding<?>>> byScope = new LinkedHashMap<>();
-        private final List<Binding<?>> insertionOrder = new ArrayList<>();
-        private List<Binding<?>> cachedAny = Collections.emptyList();
-        private boolean anyDirty = true;
+        private final Map<BindingScope, CopyOnWriteArrayList<Binding<?>>> byScope = new ConcurrentHashMap<>();
+        private final List<Binding<?>> insertionOrder = new CopyOnWriteArrayList<>();
+
+        void add(@NotNull BindingKey key, @NotNull Binding<?> binding) {
+            BindingScope scope = key.getScope();
+
+            byScope.compute(scope, (ignored, existing) -> {
+                CopyOnWriteArrayList<Binding<?>> scoped = existing != null ? existing : new CopyOnWriteArrayList<>();
+                ensureCompatible(scoped, binding, key);
+                scoped.add(binding);
+                return scoped;
+            });
+
+            insertionOrder.add(binding);
+        }
 
         List<Binding<?>> bindingsForScope(@NotNull BindingScope scope) {
-            return byScope.computeIfAbsent(scope, ignored -> new ArrayList<>());
-        }
-
-        List<Binding<?>> bindingsForScopeOrEmpty(@NotNull BindingScope scope) {
             List<Binding<?>> bindings = byScope.get(scope);
-            return bindings != null ? bindings : Collections.emptyList();
-        }
+            if (bindings == null || bindings.isEmpty()) {
+                return Collections.emptyList();
+            }
 
-        void recordAddition(@NotNull Binding<?> binding) {
-            insertionOrder.add(binding);
-            anyDirty = true;
+            return Collections.unmodifiableList(new ArrayList<>(bindings));
         }
 
         List<Binding<?>> anyBindings() {
-            if (anyDirty) {
-                if (insertionOrder.isEmpty()) {
-                    cachedAny = Collections.emptyList();
-                } else {
-                    cachedAny = Collections.unmodifiableList(new ArrayList<>(insertionOrder));
-                }
-
-                anyDirty = false;
+            if (insertionOrder.isEmpty()) {
+                return Collections.emptyList();
             }
 
-            return cachedAny;
+            return Collections.unmodifiableList(new ArrayList<>(insertionOrder));
+        }
+
+        private static void ensureCompatible(@NotNull List<Binding<?>> scopedBindings,
+                                             @NotNull Binding<?> candidate,
+                                             @NotNull BindingKey key) {
+            if (scopedBindings.isEmpty()) {
+                return;
+            }
+
+            boolean existingSupportsCollections = scopedBindings.stream().allMatch(Binding::isCollectionContribution);
+
+            if (!existingSupportsCollections || !candidate.isCollectionContribution()) {
+                throw new IllegalStateException("Duplicate binding registered for " + key.describe());
+            }
         }
     }
 }
