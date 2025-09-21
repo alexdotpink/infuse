@@ -110,22 +110,26 @@ public class InfuseInjector implements Injector {
         }
 
         List<EagerInstanceRecord> eagerSingletons = new ArrayList<>();
-        Context<?> eagerContext = new Context<>(getClass(), this, this, ElementType.FIELD, "eager", new Annotation[0]);
+        Context<?> eagerContext = Context.borrow(getClass(), this, this, ElementType.FIELD, "eager",
+                new Annotation[0]);
+        try {
+            for (Binding<?> binding : getOwnBindings()) {
+                Provider<?> provider = binding.getProvider();
+                Object instance = null;
 
-        for (Binding<?> binding : getOwnBindings()) {
-            Provider<?> provider = binding.getProvider();
-            Object instance = null;
+                if (ScopeProviders.isEager(binding.getScope())) {
+                    instance = eagerInstantiate(binding, eagerContext);
+                } else if (provider instanceof InstanceProvider) {
+                    instance = ((InstanceProvider<?>) provider).provideWithoutInjecting(eagerContext);
+                }
 
-            if (ScopeProviders.isEager(binding.getScope())) {
-                instance = eagerInstantiate(binding, eagerContext);
-            } else if (provider instanceof InstanceProvider) {
-                instance = ((InstanceProvider<?>) provider).provideWithoutInjecting(eagerContext);
+                if (instance != null) {
+                    InjectionPlan plan = getInjectionPlan(instance.getClass());
+                    eagerSingletons.add(new EagerInstanceRecord(binding, instance, plan));
+                }
             }
-
-            if (instance != null) {
-                InjectionPlan plan = getInjectionPlan(instance.getClass());
-                eagerSingletons.add(new EagerInstanceRecord(binding, instance, plan));
-            }
+        } finally {
+            eagerContext.release();
         }
 
         List<PostInjectInvocation> postInjectInvocations = new ArrayList<>();
@@ -431,10 +435,13 @@ public class InfuseInjector implements Injector {
 
     @Override
     public <T> @Nullable T provide(@NotNull Class<T> type, @NotNull Object calling) {
-        Context<?> context = new Context<>(calling.getClass(), calling, this, ElementType.FIELD, "field",
+        Context<?> context = Context.borrow(calling.getClass(), calling, this, ElementType.FIELD, "field",
                 new Annotation[0]);
-
-        return provide(type, context);
+        try {
+            return provide(type, context);
+        } finally {
+            context.release();
+        }
     }
 
     @Override
@@ -673,8 +680,15 @@ public class InfuseInjector implements Injector {
                     try {
                         Annotation[] annotations = field.getAnnotations();
                         boolean optional = InjectionUtils.isOptional(annotations);
-                        Object value = provide(field.getType(), new Context<>(object.getClass(), object, this,
-                                ElementType.FIELD, field.getName(), annotations));
+                        Object value;
+                        Context<?> fieldContext = Context.borrow(object.getClass(), object, this, ElementType.FIELD,
+                                field.getName(), annotations);
+
+                        try {
+                            value = provide(field.getType(), fieldContext);
+                        } finally {
+                            fieldContext.release();
+                        }
 
                         if (value == null && optional) {
                             if (field.getType().isPrimitive()) {
@@ -781,9 +795,15 @@ public class InfuseInjector implements Injector {
                                 + " cannot target primitive type " + parameter.getType().getName());
                     }
 
-                    Object value = provide(parameter.getType(),
-                            new Context<>(method.getDeclaringClass(), this, this, ElementType.METHOD, parameter.getName(),
-                                    annotations));
+                    Context<?> parameterContext = Context.borrow(method.getDeclaringClass(), this, this,
+                            ElementType.METHOD, parameter.getName(), annotations);
+                    Object value;
+
+                    try {
+                        value = provide(parameter.getType(), parameterContext);
+                    } finally {
+                        parameterContext.release();
+                    }
 
                     if (optional && value == null) {
                         return null;

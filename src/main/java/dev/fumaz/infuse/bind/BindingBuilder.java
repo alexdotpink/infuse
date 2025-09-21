@@ -210,16 +210,21 @@ public class BindingBuilder<T> {
 
     private <A> A resolveDependency(Context<?> parentContext, Class<A> dependency) {
         Injector injector = parentContext.getInjector();
-        Context<A> dependencyContext = new Context<>(dependency, parentContext.getObject(), injector, ElementType.FIELD,
-                dependency.getSimpleName(), new Annotation[0]);
-        A resolved = injector.provide(dependency, dependencyContext);
+        Context<A> dependencyContext = Context.borrow(dependency, parentContext.getObject(), injector,
+                ElementType.FIELD, dependency.getSimpleName(), new Annotation[0]);
 
-        if (resolved == null) {
-            throw new IllegalStateException("Unable to resolve dependency " + dependency.getName()
-                    + " while binding " + type.getName());
+        try {
+            A resolved = injector.provide(dependency, dependencyContext);
+
+            if (resolved == null) {
+                throw new IllegalStateException("Unable to resolve dependency " + dependency.getName()
+                        + " while binding " + type.getName());
+            }
+
+            return resolved;
+        } finally {
+            dependencyContext.release();
         }
-
-        return resolved;
     }
 
     private T instantiateWithConstructor(Context<?> context, Constructor<? extends T> constructor) {
@@ -253,26 +258,30 @@ public class BindingBuilder<T> {
         Class<?> parameterType = parameter.getType();
         Injector injector = parentContext.getInjector();
 
-        Context<?> parameterContext = new Context<>(parameter.getDeclaringExecutable().getDeclaringClass(),
+        Context<?> parameterContext = Context.borrow(parameter.getDeclaringExecutable().getDeclaringClass(),
                 parentContext.getObject(), injector, ElementType.CONSTRUCTOR, parameter.getName(), annotations);
 
-        Object resolved = injector.provide(parameterType, parameterContext);
+        try {
+            Object resolved = injector.provide(parameterType, parameterContext);
 
-        if (resolved == null) {
-            if (optional) {
-                if (parameterType.isPrimitive()) {
-                    throw new IllegalStateException("Optional constructor parameter " + parameter.getName()
-                            + " cannot target primitive type " + parameterType.getName());
+            if (resolved == null) {
+                if (optional) {
+                    if (parameterType.isPrimitive()) {
+                        throw new IllegalStateException("Optional constructor parameter " + parameter.getName()
+                                + " cannot target primitive type " + parameterType.getName());
+                    }
+
+                    return null;
                 }
 
-                return null;
+                throw new IllegalStateException("Unable to resolve constructor parameter " + parameter.getName()
+                        + " for type " + type.getName());
             }
 
-            throw new IllegalStateException("Unable to resolve constructor parameter " + parameter.getName()
-                    + " for type " + type.getName());
+            return resolved;
+        } finally {
+            parameterContext.release();
         }
-
-        return resolved;
     }
 
     private void ensureAssignable(Class<?> implementation) {

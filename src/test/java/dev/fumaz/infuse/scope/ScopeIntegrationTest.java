@@ -56,7 +56,8 @@ class ScopeIntegrationTest {
                         cache.instances.put(key, created);
 
                         if (created != null) {
-                            cache.destroyHooks.add(() -> ScopeSupport.invokePreDestroy(context.getInjector(), created));
+                            Context<?> retained = context.detach();
+                            cache.destroyHooks.add(() -> ScopeSupport.invokePreDestroy(retained.getInjector(), created));
                         }
 
                         return created;

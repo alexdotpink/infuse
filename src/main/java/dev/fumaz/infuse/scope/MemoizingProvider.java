@@ -36,19 +36,23 @@ public final class MemoizingProvider<T> implements Provider<T> {
 
     public T provideWithoutInjecting(InfuseInjector injector) {
         Annotation[] annotations = new Annotation[0];
-        Context<?> eagerContext = new Context<>(type, injector, injector, ElementType.FIELD, "eager", annotations);
+        Context<?> eagerContext = Context.borrow(type, injector, injector, ElementType.FIELD, "eager", annotations);
 
-        return getOrCreate(() -> {
-            if (delegate instanceof SingletonProvider) {
-                return ((SingletonProvider<T>) delegate).provideWithoutInjecting(eagerContext);
-            }
+        try {
+            return getOrCreate(() -> {
+                if (delegate instanceof SingletonProvider) {
+                    return ((SingletonProvider<T>) delegate).provideWithoutInjecting(eagerContext);
+                }
 
-            if (delegate instanceof InstanceProvider) {
-                return ((InstanceProvider<T>) delegate).provideWithoutInjecting(eagerContext);
-            }
+                if (delegate instanceof InstanceProvider) {
+                    return ((InstanceProvider<T>) delegate).provideWithoutInjecting(eagerContext);
+                }
 
-            return delegate.provide(eagerContext);
-        });
+                return delegate.provide(eagerContext);
+            });
+        } finally {
+            eagerContext.release();
+        }
     }
 
     public boolean isEager() {

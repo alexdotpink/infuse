@@ -35,9 +35,13 @@ public interface Provider<T> {
     @Nullable T provide(Context<?> context);
 
     default @Nullable T provide(Injector injector, Object calling) {
-        Context<?> context = new Context<>(calling.getClass(), calling, injector, ElementType.FIELD, "field", new Annotation[0]);
-
-        return provide(context);
+        Context<?> context = Context.borrow(calling.getClass(), calling, injector, ElementType.FIELD, "field",
+                new Annotation[0]);
+        try {
+            return provide(context);
+        } finally {
+            context.release();
+        }
     }
 
 }
