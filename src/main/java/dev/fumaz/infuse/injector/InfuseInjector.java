@@ -702,8 +702,10 @@ public class InfuseInjector implements Injector {
             Field field = point.field();
 
             try {
-                Context<?> fieldContext = Context.borrow(object.getClass(), object, this, ElementType.FIELD,
-                        field.getName(), field::getAnnotations);
+                @SuppressWarnings("unchecked")
+                Class<Object> contextType = (Class<Object>) object.getClass();
+                Context<?> fieldContext = Context.borrow(contextType, object, this, ElementType.FIELD,
+                        field.getName(), point.annotations());
 
                 try {
                     Object value = provide(point.type(), fieldContext);
@@ -766,7 +768,7 @@ public class InfuseInjector implements Injector {
         Method method = point.method();
 
         try {
-            Object[] arguments = getMethodArguments(method);
+            Object[] arguments = point.resolveArguments(this);
             point.invoke(object, arguments);
         } catch (Throwable e) {
             String message = failurePrefix + method.getName() + " in " + object.getClass().getName();
@@ -779,35 +781,7 @@ public class InfuseInjector implements Injector {
         return injectionPlans.computeIfAbsent(clazz, InjectionPlan::new);
     }
 
-    private @NotNull Object[] getMethodArguments(@NotNull Method method) {
-        return Arrays.stream(method.getParameters())
-                .map(parameter -> {
-                    boolean optional = InjectionUtils.isOptional(parameter);
-
-                    if (optional && parameter.getType().isPrimitive()) {
-                        throw new IllegalArgumentException("Optional method parameter " + parameter.getName()
-                                + " in " + method.getDeclaringClass().getName()
-                                + " cannot target primitive type " + parameter.getType().getName());
-                    }
-
-                    Context<?> parameterContext = Context.borrow(method.getDeclaringClass(), this, this,
-                            ElementType.METHOD, parameter.getName(), parameter::getAnnotations);
-
-                    try {
-                        Object value = provide(parameter.getType(), parameterContext);
-
-                        if (optional && value == null) {
-                            return null;
-                        }
-
-                        return value;
-                    } finally {
-                        parameterContext.release();
-                    }
-                })
-                .toArray();
-    }
-
+    
     private static final class ResolutionScopes {
 
         private final ThreadLocal<ResolutionScopeState> state;
@@ -1887,26 +1861,32 @@ public class InfuseInjector implements Injector {
     }
 
     private static final class FieldInjectionPoint {
+        private static final Annotation[] NO_ANNOTATIONS = new Annotation[0];
+
         private final Field field;
         private final @Nullable VarHandle handle;
         private final boolean optional;
         private final boolean primitive;
         private final boolean isStatic;
+        private final Annotation[] annotations;
 
         private FieldInjectionPoint(Field field,
                                     @Nullable VarHandle handle,
                                     boolean optional,
                                     boolean primitive,
-                                    boolean isStatic) {
+                                    boolean isStatic,
+                                    Annotation[] annotations) {
             this.field = field;
             this.handle = handle;
             this.optional = optional;
             this.primitive = primitive;
             this.isStatic = isStatic;
+            this.annotations = annotations == null || annotations.length == 0 ? NO_ANNOTATIONS : annotations;
         }
 
         private static FieldInjectionPoint create(Field field) {
-            boolean optional = InjectionUtils.isOptional(field);
+            Annotation[] annotations = field.getAnnotations();
+            boolean optional = InjectionUtils.isOptional(annotations);
             boolean primitive = field.getType().isPrimitive();
             boolean isStatic = Modifier.isStatic(field.getModifiers());
             VarHandle handle = null;
@@ -1917,7 +1897,7 @@ public class InfuseInjector implements Injector {
             } catch (IllegalAccessException | RuntimeException ignored) {
             }
 
-            return new FieldInjectionPoint(field, handle, optional, primitive, isStatic);
+            return new FieldInjectionPoint(field, handle, optional, primitive, isStatic, annotations);
         }
 
         private Field field() {
@@ -1934,6 +1914,10 @@ public class InfuseInjector implements Injector {
 
         private boolean primitive() {
             return primitive;
+        }
+
+        private Annotation[] annotations() {
+            return annotations;
         }
 
         private void set(Object target, Object value) throws Throwable {
@@ -1953,23 +1937,29 @@ public class InfuseInjector implements Injector {
     }
 
     private static final class MethodInjectionPoint {
+        private static final Object[] NO_ARGUMENTS = new Object[0];
+
         private final Method method;
         private final @Nullable MethodHandle handle;
         private final boolean isStatic;
         private final int priority;
+        private final MethodParameter[] parameters;
 
         private MethodInjectionPoint(Method method,
                                      @Nullable MethodHandle handle,
                                      boolean isStatic,
-                                     int priority) {
+                                     int priority,
+                                     MethodParameter[] parameters) {
             this.method = method;
             this.handle = handle;
             this.isStatic = isStatic;
             this.priority = priority;
+            this.parameters = parameters;
         }
 
         private static MethodInjectionPoint create(Method method, int priority) {
             boolean isStatic = Modifier.isStatic(method.getModifiers());
+            MethodParameter[] parameters = MethodParameter.createAll(method);
             MethodHandle handle = null;
 
             try {
@@ -1986,7 +1976,7 @@ public class InfuseInjector implements Injector {
             } catch (IllegalAccessException | RuntimeException ignored) {
             }
 
-            return new MethodInjectionPoint(method, handle, isStatic, priority);
+            return new MethodInjectionPoint(method, handle, isStatic, priority, parameters);
         }
 
         private Method method() {
@@ -1995,6 +1985,22 @@ public class InfuseInjector implements Injector {
 
         private int priority() {
             return priority;
+        }
+
+        private Object[] resolveArguments(InfuseInjector injector) {
+            MethodParameter[] current = parameters;
+
+            if (current.length == 0) {
+                return NO_ARGUMENTS;
+            }
+
+            Object[] resolved = new Object[current.length];
+
+            for (int i = 0; i < current.length; i++) {
+                resolved[i] = current[i].resolve(injector);
+            }
+
+            return resolved;
         }
 
         private void invoke(Object target, Object[] arguments) throws Throwable {
@@ -2009,6 +2015,80 @@ public class InfuseInjector implements Injector {
                 method.invoke(receiver, arguments);
             } catch (InvocationTargetException e) {
                 throw e.getCause();
+            }
+        }
+
+        private static final class MethodParameter {
+            private static final Annotation[] NO_ANNOTATIONS = new Annotation[0];
+
+            private final Class<?> type;
+            private final String name;
+            private final Annotation[] annotations;
+            private final boolean optional;
+            private final boolean primitive;
+            private final Class<?> declaringType;
+
+            private MethodParameter(Class<?> type,
+                                    String name,
+                                    Annotation[] annotations,
+                                    boolean optional,
+                                    boolean primitive,
+                                    Class<?> declaringType) {
+                this.type = type;
+                this.name = name;
+                this.annotations = annotations == null || annotations.length == 0 ? NO_ANNOTATIONS : annotations;
+                this.optional = optional;
+                this.primitive = primitive;
+                this.declaringType = declaringType;
+            }
+
+            private static MethodParameter[] createAll(Method method) {
+                Parameter[] reflectionParameters = method.getParameters();
+
+                if (reflectionParameters.length == 0) {
+                    return new MethodParameter[0];
+                }
+
+                MethodParameter[] parameters = new MethodParameter[reflectionParameters.length];
+                Class<?> declaringType = method.getDeclaringClass();
+
+                for (int i = 0; i < reflectionParameters.length; i++) {
+                    Parameter parameter = reflectionParameters[i];
+                    Class<?> parameterType = parameter.getType();
+                    Annotation[] annotations = parameter.getAnnotations();
+                    boolean optional = InjectionUtils.isOptional(annotations);
+                    boolean primitive = parameterType.isPrimitive();
+
+                    if (optional && primitive) {
+                        throw new IllegalArgumentException("Optional method parameter " + parameter.getName()
+                                + " in " + declaringType.getName()
+                                + " cannot target primitive type " + parameterType.getName());
+                    }
+
+                    parameters[i] = new MethodParameter(parameterType, parameter.getName(), annotations, optional,
+                            primitive, declaringType);
+                }
+
+                return parameters;
+            }
+
+            private Object resolve(InfuseInjector injector) {
+                @SuppressWarnings("unchecked")
+                Class<Object> ctxType = (Class<Object>) declaringType;
+                Context<?> parameterContext = Context.borrow(ctxType, injector, injector, ElementType.METHOD, name,
+                        annotations);
+
+                try {
+                    Object value = injector.provide(type, parameterContext);
+
+                    if (optional && value == null) {
+                        return null;
+                    }
+
+                    return value;
+                } finally {
+                    parameterContext.release();
+                }
             }
         }
     }
