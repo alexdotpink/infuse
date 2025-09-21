@@ -10,13 +10,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.logging.Logger;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -42,7 +44,7 @@ public class InfuseInjector implements Injector {
 
     private final @Nullable Injector parent;
     private final @NotNull List<Module> modules;
-    private final @NotNull Map<Class<?>, InjectionPlan> injectionPlans;
+    private final @NotNull ConcurrentMap<Class<?>, InjectionPlan> injectionPlans;
     private final @NotNull BindingRegistry bindingRegistry;
     private final @NotNull List<Binding<?>> ownBindings;
     private final @NotNull ScopedInstanceRegistry scopedInstances;
@@ -51,7 +53,7 @@ public class InfuseInjector implements Injector {
     public InfuseInjector(@Nullable Injector parent, @NotNull List<Module> modules) {
         this.parent = parent;
         this.modules = modules;
-        this.injectionPlans = new HashMap<>();
+        this.injectionPlans = new ConcurrentHashMap<>();
         this.bindingRegistry = new BindingRegistry();
         this.ownBindings = new ArrayList<>();
         this.scopedInstances = new ScopedInstanceRegistry();
@@ -747,33 +749,30 @@ public class InfuseInjector implements Injector {
 
     private static final class ResolutionScopes {
 
-        private final Deque<ResolutionScope> stack = new ArrayDeque<>();
-        private final Map<Class<?>, Integer> inProgress = new HashMap<>();
-        private final Deque<Class<?>> path = new ArrayDeque<>();
+        private final ThreadLocal<ResolutionScopeState> state;
 
         private ResolutionScopes(InfuseInjector root) {
-            ResolutionScope scope = ResolutionScope.root(root);
-            scope.store(root.getClass(), root);
-            scope.store(Injector.class, root);
-            stack.push(scope);
+            this.state = ThreadLocal.withInitial(() -> ResolutionScopeState.create(root));
         }
 
         private ResolutionScopeHandle enter(Object owner) {
-            ResolutionScope current = stack.peek();
+            ResolutionScopeState state = currentState();
+            ResolutionScope current = state.stack.peek();
 
             if (current != null && current.isOwner(owner)) {
                 current.retain();
-                return new ResolutionScopeHandle(current, false);
+                return new ResolutionScopeHandle(state, current, false);
             }
 
             ResolutionScope scope = ResolutionScope.object(owner);
             scope.store(owner.getClass(), owner);
-            stack.push(scope);
+            state.stack.push(scope);
 
-            return new ResolutionScopeHandle(scope, true);
+            return new ResolutionScopeHandle(state, scope, true);
         }
 
         private void exit(ResolutionScopeHandle handle) {
+            ResolutionScopeState state = handle.state;
             ResolutionScope scope = handle.scope;
 
             if (scope.isRoot()) {
@@ -785,6 +784,8 @@ public class InfuseInjector implements Injector {
                 return;
             }
 
+            Deque<ResolutionScope> stack = state.stack;
+
             if (stack.peek() != scope) {
                 throw new IllegalStateException("Scope mismatch while exiting dependency scope");
             }
@@ -795,7 +796,9 @@ public class InfuseInjector implements Injector {
         }
 
         private Object lookup(Class<?> type) {
-            for (ResolutionScope scope : stack) {
+            ResolutionScopeState state = currentState();
+
+            for (ResolutionScope scope : state.stack) {
                 Object candidate = scope.lookup(type);
 
                 if (candidate != null) {
@@ -807,29 +810,31 @@ public class InfuseInjector implements Injector {
         }
 
         private ProvisionFrame begin(Class<?> type) {
-            path.push(type);
+            ResolutionScopeState state = currentState();
+            state.path.push(type);
 
-            int depth = inProgress.getOrDefault(type, 0) + 1;
-            inProgress.put(type, depth);
+            int depth = state.inProgress.getOrDefault(type, 0) + 1;
+            state.inProgress.put(type, depth);
 
             if (depth > 1) {
-                throwCycle(type);
+                throwCycle(state, type);
             }
 
-            return new ProvisionFrame(stack.peek(), type);
+            return new ProvisionFrame(state.stack.peek(), type);
         }
 
         private void end(ProvisionFrame frame) {
+            ResolutionScopeState state = currentState();
             Class<?> type = frame.type;
-            int depth = inProgress.getOrDefault(type, 0);
+            int depth = state.inProgress.getOrDefault(type, 0);
 
             if (depth <= 1) {
-                inProgress.remove(type);
+                state.inProgress.remove(type);
             } else {
-                inProgress.put(type, depth - 1);
+                state.inProgress.put(type, depth - 1);
             }
 
-            Class<?> finished = path.pop();
+            Class<?> finished = state.path.pop();
 
             if (finished != type) {
                 throw new IllegalStateException("Provision stack mismatch for " + type.getName());
@@ -841,7 +846,8 @@ public class InfuseInjector implements Injector {
                 return;
             }
 
-            ResolutionScope scope = stack.peek();
+            ResolutionScopeState state = currentState();
+            ResolutionScope scope = state.stack.peek();
 
             if (scope == null) {
                 throw new IllegalStateException("No active scope while recording instance for " + requestedType.getName());
@@ -851,8 +857,12 @@ public class InfuseInjector implements Injector {
             scope.store(instance.getClass(), instance);
         }
 
-        private void throwCycle(Class<?> type) {
-            List<Class<?>> snapshot = new ArrayList<>(path);
+        private ResolutionScopeState currentState() {
+            return state.get();
+        }
+
+        private void throwCycle(ResolutionScopeState state, Class<?> type) {
+            List<Class<?>> snapshot = new ArrayList<>(state.path);
             StringBuilder builder = new StringBuilder();
 
             for (int i = snapshot.size() - 1; i >= 0; i--) {
@@ -865,6 +875,30 @@ public class InfuseInjector implements Injector {
 
             throw new IllegalStateException("Dependency cycle detected while resolving " + type.getName() + ": "
                     + builder);
+        }
+
+        private static final class ResolutionScopeState {
+            private final Deque<ResolutionScope> stack;
+            private final Map<Class<?>, Integer> inProgress;
+            private final Deque<Class<?>> path;
+
+            private ResolutionScopeState(Deque<ResolutionScope> stack,
+                                         Map<Class<?>, Integer> inProgress,
+                                         Deque<Class<?>> path) {
+                this.stack = stack;
+                this.inProgress = inProgress;
+                this.path = path;
+            }
+
+            private static ResolutionScopeState create(InfuseInjector root) {
+                Deque<ResolutionScope> stack = new ArrayDeque<>();
+                ResolutionScope scope = ResolutionScope.root(root);
+                scope.store(root.getClass(), root);
+                scope.store(Injector.class, root);
+                stack.push(scope);
+
+                return new ResolutionScopeState(stack, new HashMap<>(), new ArrayDeque<>());
+            }
         }
     }
 
@@ -879,10 +913,14 @@ public class InfuseInjector implements Injector {
     }
 
     private static final class ResolutionScopeHandle {
+        private final ResolutionScopes.ResolutionScopeState state;
         private final ResolutionScope scope;
         private final boolean newScope;
 
-        private ResolutionScopeHandle(ResolutionScope scope, boolean newScope) {
+        private ResolutionScopeHandle(ResolutionScopes.ResolutionScopeState state,
+                                      ResolutionScope scope,
+                                      boolean newScope) {
+            this.state = state;
             this.scope = scope;
             this.newScope = newScope;
         }
