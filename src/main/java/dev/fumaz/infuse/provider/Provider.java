@@ -41,13 +41,15 @@ public interface Provider<T> {
             ContextViewAware<T> lightweight = (ContextViewAware<T>) this;
             @SuppressWarnings("unchecked")
             Class<Object> type = (Class<Object>) calling.getClass();
+            // Use null so ContextView reuses its shared empty annotation array instead of allocating.
             ContextView<Object> view = ContextView.of(type, calling, injector, ElementType.FIELD,
-                    "field", new Annotation[0]);
+                    "field", null);
             return lightweight.provide(view);
         }
 
+        // Passing null lets Context borrow reuse its shared empty annotation array.
         Context<?> context = Context.borrow(calling.getClass(), calling, injector, ElementType.FIELD, "field",
-                new Annotation[0]);
+                null);
         try {
             return provide(context);
         } finally {
