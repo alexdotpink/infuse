@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Collections;
 import java.util.logging.Logger;
 
 import org.jetbrains.annotations.NotNull;
@@ -24,6 +25,9 @@ import dev.fumaz.infuse.annotation.PostConstruct;
 import dev.fumaz.infuse.annotation.PostInject;
 import dev.fumaz.infuse.annotation.PreDestroy;
 import dev.fumaz.infuse.bind.Binding;
+import dev.fumaz.infuse.bind.BindingQualifier;
+import dev.fumaz.infuse.bind.BindingRegistry;
+import dev.fumaz.infuse.bind.BindingScope;
 import dev.fumaz.infuse.context.Context;
 import dev.fumaz.infuse.module.Module;
 import dev.fumaz.infuse.provider.InstanceProvider;
@@ -36,26 +40,31 @@ public class InfuseInjector implements Injector {
     private final @Nullable Injector parent;
     private final @NotNull List<Module> modules;
     private final @NotNull Map<Class<?>, InjectionPlan> injectionPlans;
-    private final @NotNull Map<Class<?>, Binding<?>> bindings;
+    private final @NotNull BindingRegistry bindingRegistry;
+    private final @NotNull List<Binding<?>> ownBindings;
     private final @NotNull ResolutionScopes resolutionScopes;
 
     public InfuseInjector(@Nullable Injector parent, @NotNull List<Module> modules) {
         this.parent = parent;
         this.modules = modules;
         this.injectionPlans = new HashMap<>();
-        this.bindings = new HashMap<>();
+        this.bindingRegistry = new BindingRegistry();
+        this.ownBindings = new ArrayList<>();
         this.resolutionScopes = new ResolutionScopes(this);
 
         for (Module module : modules) {
             module.configure();
-            
+
             for (Binding<?> binding : module.getBindings()) {
-                bindings.put(binding.getType(), binding);
+                registerBinding(binding);
             }
         }
 
-        bindings.put(Injector.class, new Binding<>(Injector.class, new InstanceProvider<>(this)));
-        bindings.put(Logger.class, new Binding<>(Logger.class, (context) -> Logger.getLogger(context.getType().getSimpleName())));
+        registerBinding(new Binding<>(Injector.class, new InstanceProvider<>(this),
+                BindingQualifier.none(), BindingScope.INSTANCE, false));
+        registerBinding(new Binding<>(Logger.class,
+                (context) -> Logger.getLogger(context.getType().getSimpleName()),
+                BindingQualifier.none(), BindingScope.UNSCOPED, false));
 
         List<Object> eagerSingletons = new ArrayList<>();
         for (Binding<?> binding : getOwnBindings()) {
@@ -116,6 +125,27 @@ public class InfuseInjector implements Injector {
         postInject(object);
     }
 
+    private void registerBinding(@NotNull Binding<?> binding) {
+        bindingRegistry.add(binding);
+        ownBindings.add(binding);
+    }
+
+    private <T> List<Binding<T>> resolveBindings(@NotNull Class<T> type,
+                                                 @NotNull BindingQualifier qualifier,
+                                                 @NotNull BindingScope scope) {
+        List<Binding<T>> matches = bindingRegistry.find(type, qualifier, scope);
+
+        if (!matches.isEmpty()) {
+            return matches;
+        }
+
+        if (parent instanceof InfuseInjector) {
+            return ((InfuseInjector) parent).resolveBindings(type, qualifier, scope);
+        }
+
+        return Collections.emptyList();
+    }
+
     private void injectInjectionPoints(@NotNull Object object) {
         injectVariables(object);
         injectMethods(object);
@@ -134,16 +164,29 @@ public class InfuseInjector implements Injector {
                 return type.cast(existing);
             }
 
-            Binding<T> binding = getBindingOrNull(type);
+            BindingQualifier qualifier = InjectionUtils.resolveQualifier(context.getAnnotations());
+            List<Binding<T>> matches = resolveBindings(type, qualifier, BindingScope.ANY);
 
-            if (binding == null && optional) {
+            if (matches.isEmpty() && optional) {
                 return null;
+            }
+
+            if (matches.size() > 1) {
+                boolean allCollections = matches.stream().allMatch(Binding::isCollectionContribution);
+
+                if (allCollections) {
+                    throw new IllegalStateException("Collection bindings are not yet supported for type "
+                            + type.getName() + (qualifier.isDefault() ? "" : " qualified by " + qualifier));
+                }
+
+                throw new IllegalStateException("Multiple bindings found for " + type.getName()
+                        + (qualifier.isDefault() ? "" : " qualified by " + qualifier));
             }
 
             frame = resolutionScopes.begin(type);
 
-            T instance = binding != null
-                    ? binding.getProvider().provide(context)
+            T instance = !matches.isEmpty()
+                    ? matches.get(0).getProvider().provide(context)
                     : construct(type);
 
             if (instance == null && optional) {
@@ -302,7 +345,7 @@ public class InfuseInjector implements Injector {
     }
 
     private List<Binding<?>> getOwnBindings() {
-        return new ArrayList<>(bindings.values());
+        return new ArrayList<>(ownBindings);
     }
 
     public <T> @NotNull Binding<T> getBindingOrThrow(@NotNull Class<T> type) {
@@ -316,17 +359,17 @@ public class InfuseInjector implements Injector {
     }
 
     public <T> @Nullable Binding<T> getBindingOrNull(@NotNull Class<T> type) {
-        Binding<?> binding = bindings.get(type);
+        List<Binding<T>> bindings = resolveBindings(type, BindingQualifier.none(), BindingScope.ANY);
 
-        if (binding != null) {
-            return (Binding<T>) binding;
+        if (bindings.isEmpty()) {
+            return null;
         }
 
-        if (parent != null) {
-            return (parent instanceof InfuseInjector) ? ((InfuseInjector) parent).getBindingOrNull(type) : null;
+        if (bindings.size() > 1) {
+            throw new IllegalStateException("Multiple bindings found for " + type.getName());
         }
 
-        return null;
+        return bindings.get(0);
     }
 
     private <T> @Nullable Constructor<T> findInjectableConstructor(@NotNull Class<T> type) {

@@ -31,6 +31,9 @@ public class BindingBuilder<T> {
     private final @NotNull Collection<Binding<?>> bindings;
 
     private @Nullable Provider<T> provider;
+    private @NotNull BindingQualifier qualifier = BindingQualifier.none();
+    private @NotNull BindingScope scope = BindingScope.UNSCOPED;
+    private boolean collectionContribution = false;
 
     public BindingBuilder(@NotNull Class<T> type, @NotNull Collection<Binding<?>> bindings) {
         this.type = type;
@@ -43,6 +46,35 @@ public class BindingBuilder<T> {
         return build();
     }
 
+    public BindingBuilder<T> named(@NotNull String name) {
+        qualifier = BindingQualifier.named(name);
+        return this;
+    }
+
+    public BindingBuilder<T> qualifiedBy(@NotNull Class<? extends Annotation> qualifierType) {
+        qualifier = BindingQualifier.of(qualifierType);
+        return this;
+    }
+
+    public BindingBuilder<T> qualifiedBy(@NotNull Annotation qualifierAnnotation) {
+        qualifier = BindingQualifier.from(qualifierAnnotation);
+        return this;
+    }
+
+    public BindingBuilder<T> inScope(@NotNull BindingScope scope) {
+        this.scope = scope.isAny() ? BindingScope.UNSCOPED : scope;
+        return this;
+    }
+
+    public BindingBuilder<T> inScope(@NotNull String scopeName) {
+        return inScope(BindingScope.custom(scopeName));
+    }
+
+    public BindingBuilder<T> intoCollection() {
+        this.collectionContribution = true;
+        return this;
+    }
+
     public Binding<T> to(@NotNull Class<? extends T> implementation) {
         Objects.requireNonNull(implementation, "implementation");
         ensureAssignable(implementation);
@@ -52,6 +84,7 @@ public class BindingBuilder<T> {
 
     public Binding<T> toSingleton() {
         this.provider = Provider.singleton(type);
+        this.scope = BindingScope.SINGLETON;
 
         return build();
     }
@@ -61,12 +94,14 @@ public class BindingBuilder<T> {
         ensureAssignable(implementation);
 
         this.provider = new SingletonProvider<>(cast(implementation), false);
+        this.scope = BindingScope.SINGLETON;
 
         return build();
     }
 
     public Binding<T> toEagerSingleton() {
         this.provider = Provider.eagerSingleton(type);
+        this.scope = BindingScope.EAGER_SINGLETON;
 
         return build();
     }
@@ -76,18 +111,21 @@ public class BindingBuilder<T> {
         ensureAssignable(implementation);
 
         this.provider = new SingletonProvider<>(cast(implementation), true);
+        this.scope = BindingScope.EAGER_SINGLETON;
 
         return build();
     }
 
     public Binding<T> toInstance(@Nullable T instance) {
         this.provider = Provider.instance(instance);
+        this.scope = BindingScope.INSTANCE;
 
         return build();
     }
 
     public Binding<T> toImmutableInstance(@Nullable T instance) {
         this.provider = Provider.immutableInstance(instance);
+        this.scope = BindingScope.IMMUTABLE_INSTANCE;
 
         return build();
     }
@@ -135,7 +173,7 @@ public class BindingBuilder<T> {
             throw new IllegalStateException("No provider was set");
         }
 
-        Binding<T> binding = new Binding<>(type, provider);
+        Binding<T> binding = new Binding<>(type, provider, qualifier, scope, collectionContribution);
         bindings.add(binding);
 
         return binding;

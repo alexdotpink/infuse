@@ -12,16 +12,43 @@ import java.util.Objects;
  */
 public class Binding<T> {
 
-    private final @NotNull Class<T> type;
+    private final @NotNull BindingKey key;
     private final @NotNull Provider<T> provider;
+    private final boolean collectionContribution;
 
     public Binding(@NotNull Class<T> type, @NotNull Provider<T> provider) {
-        this.type = type;
-        this.provider = provider;
+        this(type, provider, BindingQualifier.none(), BindingScope.UNSCOPED, false);
     }
 
+    public Binding(@NotNull Class<T> type,
+                   @NotNull Provider<T> provider,
+                   @NotNull BindingQualifier qualifier,
+                   @NotNull BindingScope scope,
+                   boolean collectionContribution) {
+        this.key = BindingKey.of(type, qualifier, scope);
+        this.provider = provider;
+        this.collectionContribution = collectionContribution;
+    }
+
+    @SuppressWarnings("unchecked")
     public @NotNull Class<T> getType() {
-        return type;
+        return (Class<T>) key.getType();
+    }
+
+    public @NotNull BindingKey getKey() {
+        return key;
+    }
+
+    public @NotNull BindingQualifier getQualifier() {
+        return key.getQualifier();
+    }
+
+    public @NotNull BindingScope getScope() {
+        return key.getScope();
+    }
+
+    public boolean isCollectionContribution() {
+        return collectionContribution;
     }
 
     public @NotNull Provider<T> getProvider() {
@@ -39,12 +66,13 @@ public class Binding<T> {
         }
 
         Binding<?> binding = (Binding<?>) o;
-        return Objects.equals(type, binding.type) && Objects.equals(provider, binding.provider);
+        return collectionContribution == binding.collectionContribution
+                && Objects.equals(key, binding.key)
+                && Objects.equals(provider, binding.provider);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(type, provider);
+        return Objects.hash(key, provider, collectionContribution);
     }
-
 }
