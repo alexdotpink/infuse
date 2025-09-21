@@ -75,7 +75,7 @@ public class InfuseInjector implements Injector {
         }
 
         for (Object singleton : eagerSingletons) {
-            injectVariables(singleton);
+            injectInjectionPoints(singleton);
         }
 
         List<Method> postInjectMethods = new ArrayList<>();
@@ -111,8 +111,13 @@ public class InfuseInjector implements Injector {
     }
 
     private void injectWithinScope(@NotNull Object object) {
-        injectVariables(object);
+        injectInjectionPoints(object);
         postInject(object);
+    }
+
+    private void injectInjectionPoints(@NotNull Object object) {
+        injectVariables(object);
+        injectMethods(object);
     }
 
     @Override
@@ -501,6 +506,20 @@ public class InfuseInjector implements Injector {
                     } catch (Exception e) {
                         System.err.println(
                                 "Failed to inject field " + field.getName() + " in " + object.getClass().getName());
+                        throw new RuntimeException(e);
+                    }
+                });
+    }
+
+    private void injectMethods(Object object) {
+        getInjectionPlan(object.getClass())
+                .getInjectableMethods()
+                .forEach(method -> {
+                    try {
+                        injectMethod(object, method);
+                    } catch (Exception e) {
+                        System.err.println("Failed to inject method " + method.getName() + " in "
+                                + object.getClass().getName());
                         throw new RuntimeException(e);
                     }
                 });
