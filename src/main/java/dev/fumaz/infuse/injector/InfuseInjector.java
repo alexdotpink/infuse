@@ -96,13 +96,15 @@ public class InfuseInjector implements Injector {
             }
 
             if (instance != null) {
-                eagerSingletons.add(new EagerInstanceRecord(binding, instance));
+                InjectionPlan plan = getInjectionPlan(instance.getClass());
+                eagerSingletons.add(new EagerInstanceRecord(binding, instance, plan));
             }
         }
 
-        List<Method> postInjectMethods = new ArrayList<>();
+        List<PostInjectInvocation> postInjectInvocations = new ArrayList<>();
         for (EagerInstanceRecord eagerSingleton : eagerSingletons) {
             Object singleton = eagerSingleton.instance();
+            InjectionPlan plan = eagerSingleton.plan();
             ResolutionScopeHandle scope = resolutionScopes.enter(singleton);
 
             try {
@@ -112,24 +114,22 @@ public class InfuseInjector implements Injector {
                 resolutionScopes.exit(scope);
             }
 
-            postInjectMethods.addAll(getInjectionPlan(singleton.getClass()).getPostInjectMethods());
+            for (Method method : plan.getPostInjectMethods()) {
+                PostInject annotation = method.getAnnotation(PostInject.class);
+                int priority = annotation == null ? 0 : annotation.priority();
+                postInjectInvocations.add(new PostInjectInvocation(singleton, method, priority));
+            }
         }
 
-        postInjectMethods.sort(Comparator.comparingInt(m -> m.getAnnotation(PostInject.class).priority()));
+        postInjectInvocations.sort(Comparator.comparingInt(PostInjectInvocation::priority));
 
-        for (Method method : postInjectMethods) {
-            for (EagerInstanceRecord eagerSingleton : eagerSingletons) {
-                Object singleton = eagerSingleton.instance();
-
-                if (method.getDeclaringClass().isInstance(singleton)) {
-                    try {
-                        injectMethod(singleton, method);
-                    } catch (Exception e) {
-                        System.err.println("Failed to eagerly inject method " + method.getName() + " in "
-                                + singleton.getClass().getName());
-                        throw e;
-                    }
-                }
+        for (PostInjectInvocation invocation : postInjectInvocations) {
+            try {
+                injectMethod(invocation.target(), invocation.method());
+            } catch (Exception e) {
+                System.err.println("Failed to eagerly inject method " + invocation.method().getName() + " in "
+                        + invocation.target().getClass().getName());
+                throw e;
             }
         }
 
@@ -999,10 +999,12 @@ public class InfuseInjector implements Injector {
     private static final class EagerInstanceRecord {
         private final Binding<?> binding;
         private final Object instance;
+        private final InjectionPlan plan;
 
-        private EagerInstanceRecord(Binding<?> binding, Object instance) {
+        private EagerInstanceRecord(Binding<?> binding, Object instance, InjectionPlan plan) {
             this.binding = binding;
             this.instance = instance;
+            this.plan = plan;
         }
 
         private Binding<?> binding() {
@@ -1011,6 +1013,34 @@ public class InfuseInjector implements Injector {
 
         private Object instance() {
             return instance;
+        }
+
+        private InjectionPlan plan() {
+            return plan;
+        }
+    }
+
+    private static final class PostInjectInvocation {
+        private final Object target;
+        private final Method method;
+        private final int priority;
+
+        private PostInjectInvocation(Object target, Method method, int priority) {
+            this.target = target;
+            this.method = method;
+            this.priority = priority;
+        }
+
+        private Object target() {
+            return target;
+        }
+
+        private Method method() {
+            return method;
+        }
+
+        private int priority() {
+            return priority;
         }
     }
 
