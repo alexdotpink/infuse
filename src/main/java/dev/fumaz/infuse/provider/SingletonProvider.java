@@ -5,6 +5,8 @@ import dev.fumaz.infuse.context.ContextView;
 import dev.fumaz.infuse.injector.InfuseInjector;
 import org.jetbrains.annotations.NotNull;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.function.Supplier;
 
 /**
@@ -14,9 +16,19 @@ import java.util.function.Supplier;
  */
 public class SingletonProvider<T> implements Provider<T>, Provider.ContextViewAware<T> {
 
+    private static final VarHandle INSTANCE_HANDLE;
+
+    static {
+        try {
+            INSTANCE_HANDLE = MethodHandles.lookup().findVarHandle(SingletonProvider.class, "instance", Object.class);
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
     private final @NotNull Class<T> type;
     private final boolean eager;
-    private volatile T instance;
+    private T instance;
     private final Object lock = new Object();
 
     public SingletonProvider(@NotNull Class<T> type, boolean eager) {
@@ -43,23 +55,32 @@ public class SingletonProvider<T> implements Provider<T>, Provider.ContextViewAw
     }
 
     private @NotNull T getOrCreate(Supplier<T> supplier) {
-        T local = instance;
+        T local = getInitializedInstance();
 
         if (local != null) {
             return local;
         }
 
         synchronized (lock) {
-            local = instance;
+            local = getInitializedInstance();
 
             if (local == null) {
                 local = supplier.get();
                 validate(local);
-                instance = local;
+                publish(local);
             }
 
             return local;
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private T getInitializedInstance() {
+        return (T) INSTANCE_HANDLE.getAcquire(this);
+    }
+
+    private void publish(T value) {
+        INSTANCE_HANDLE.setRelease(this, value);
     }
 
     private void validate(T candidate) {
