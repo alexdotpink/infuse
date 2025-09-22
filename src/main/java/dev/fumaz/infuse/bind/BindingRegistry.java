@@ -3,7 +3,9 @@ package dev.fumaz.infuse.bind;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,13 +17,44 @@ public final class BindingRegistry {
     private final List<Binding<?>> insertionOrder = new CopyOnWriteArrayList<>();
 
     public void add(@NotNull Binding<?> binding) {
-        BindingKey key = binding.getKey();
-        TypeIndex typeIndex = bindings.computeIfAbsent(key.getType(), ignored -> new TypeIndex());
-        QualifierIndex qualifierIndex = typeIndex.qualifiers.computeIfAbsent(key.getQualifier(), ignored -> new QualifierIndex());
+        addAll(Collections.singletonList(binding));
+    }
 
-        qualifierIndex.add(key, binding);
-        typeIndex.recordAddition(binding);
-        insertionOrder.add(binding);
+    public void addAll(@NotNull Collection<? extends Binding<?>> bindings) {
+        if (bindings.isEmpty()) {
+            return;
+        }
+
+        Map<Class<?>, LinkedHashMap<BindingQualifier, List<Binding<?>>>> grouped = new LinkedHashMap<>();
+        List<Binding<?>> ordered = new ArrayList<>(bindings.size());
+
+        for (Binding<?> binding : bindings) {
+            BindingKey key = binding.getKey();
+            ordered.add(binding);
+
+            grouped
+                    .computeIfAbsent(key.getType(), ignored -> new LinkedHashMap<>())
+                    .computeIfAbsent(key.getQualifier(), ignored -> new ArrayList<>())
+                    .add(binding);
+        }
+
+        for (Map.Entry<Class<?>, LinkedHashMap<BindingQualifier, List<Binding<?>>>> typeEntry : grouped.entrySet()) {
+            TypeIndex typeIndex = this.bindings.computeIfAbsent(typeEntry.getKey(), ignored -> new TypeIndex());
+            List<Binding<?>> typeBindings = new ArrayList<>();
+
+            for (Map.Entry<BindingQualifier, List<Binding<?>>> qualifierEntry : typeEntry.getValue().entrySet()) {
+                QualifierIndex qualifierIndex = typeIndex.qualifiers
+                        .computeIfAbsent(qualifierEntry.getKey(), ignored -> new QualifierIndex());
+
+                List<Binding<?>> qualifierBindings = qualifierEntry.getValue();
+                qualifierIndex.addAll(qualifierBindings);
+                typeBindings.addAll(qualifierBindings);
+            }
+
+            typeIndex.recordAddition(typeBindings);
+        }
+
+        insertionOrder.addAll(ordered);
     }
 
     public List<Binding<?>> all() {
@@ -74,8 +107,12 @@ public final class BindingRegistry {
         private final Map<BindingQualifier, QualifierIndex> qualifiers = new ConcurrentHashMap<>();
         private final List<Binding<?>> insertionOrder = new CopyOnWriteArrayList<>();
 
-        void recordAddition(@NotNull Binding<?> binding) {
-            insertionOrder.add(binding);
+        void recordAddition(@NotNull Collection<Binding<?>> bindings) {
+            if (bindings.isEmpty()) {
+                return;
+            }
+
+            insertionOrder.addAll(bindings);
         }
 
         List<Binding<?>> allBindings() {
@@ -90,18 +127,30 @@ public final class BindingRegistry {
         private final CopyOnWriteArrayList<Binding<?>> insertionOrder = new CopyOnWriteArrayList<>();
         private final List<Binding<?>> anyView = Collections.unmodifiableList(insertionOrder);
 
-        void add(@NotNull BindingKey key, @NotNull Binding<?> binding) {
-            BindingScope scope = key.getScope();
+        void addAll(@NotNull List<Binding<?>> bindings) {
+            if (bindings.isEmpty()) {
+                return;
+            }
 
-            byScope.compute(scope, (ignored, existing) -> {
-                CopyOnWriteArrayList<Binding<?>> scoped = existing != null ? existing : new CopyOnWriteArrayList<>();
-                ensureCompatible(scoped, binding, key);
-                scoped.add(binding);
+            Map<BindingScope, List<Binding<?>>> grouped = new LinkedHashMap<>();
+
+            for (Binding<?> binding : bindings) {
+                grouped
+                        .computeIfAbsent(binding.getScope(), ignored -> new ArrayList<>())
+                        .add(binding);
+            }
+
+            for (Map.Entry<BindingScope, List<Binding<?>>> entry : grouped.entrySet()) {
+                BindingScope scope = entry.getKey();
+                List<Binding<?>> additions = entry.getValue();
+
+                CopyOnWriteArrayList<Binding<?>> scoped = byScope.computeIfAbsent(scope, ignored -> new CopyOnWriteArrayList<>());
+                ensureCompatibleBatch(scoped, additions);
+                scoped.addAll(additions);
                 scopedViews.computeIfAbsent(scope, ignoredScope -> Collections.unmodifiableList(scoped));
-                return scoped;
-            });
+            }
 
-            insertionOrder.add(binding);
+            insertionOrder.addAll(bindings);
         }
 
         List<Binding<?>> bindingsForScope(@NotNull BindingScope scope) {
@@ -133,6 +182,20 @@ public final class BindingRegistry {
 
             if (!existingSupportsCollections || !candidate.isCollectionContribution()) {
                 throw new IllegalStateException("Duplicate binding registered for " + key.describe());
+            }
+        }
+
+        private static void ensureCompatibleBatch(@NotNull List<Binding<?>> scopedBindings,
+                                                  @NotNull List<Binding<?>> additions) {
+            if (additions.isEmpty()) {
+                return;
+            }
+
+            List<Binding<?>> preview = new ArrayList<>(scopedBindings);
+
+            for (Binding<?> addition : additions) {
+                ensureCompatible(preview, addition, addition.getKey());
+                preview.add(addition);
             }
         }
     }

@@ -17,6 +17,7 @@ import java.util.AbstractList;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.IdentityHashMap;
@@ -113,11 +114,7 @@ public class InfuseInjector implements Injector {
             module.reset();
             module.configure();
 
-            List<Binding<?>> produced = module.getBindings();
-
-            for (Binding<?> binding : produced) {
-                registerBinding(binding);
-            }
+            registerBindings(module.getBindings());
         }
 
         registerBinding(new Binding<>(Injector.class, new InstanceProvider<>(this),
@@ -201,9 +198,22 @@ public class InfuseInjector implements Injector {
     }
 
     private void registerBinding(@NotNull Binding<?> binding) {
-        Binding<?> scopedBinding = ScopeProviders.decorate(binding);
-        bindingRegistry.add(scopedBinding);
-        ownBindings.add(scopedBinding);
+        registerBindings(Collections.singletonList(binding));
+    }
+
+    private void registerBindings(@NotNull Collection<? extends Binding<?>> bindings) {
+        if (bindings.isEmpty()) {
+            return;
+        }
+
+        List<Binding<?>> scopedBindings = new ArrayList<>(bindings.size());
+
+        for (Binding<?> binding : bindings) {
+            scopedBindings.add(ScopeProviders.decorate(binding));
+        }
+
+        bindingRegistry.addAll(scopedBindings);
+        ownBindings.addAll(scopedBindings);
         bindingViewCache.clear();
         clearNegativeLookupCache();
     }
