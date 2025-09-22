@@ -13,6 +13,14 @@ Infuse is a powerful and flexible dependency injection library for Java. Designe
 - **Eager and Lazy Initialization**: Options for both eager and lazy initialization of dependencies.
 - **Nested Injection**: Supports nested dependency injection through child injectors.
 
+### Performance Benchmarks
+
+Microbenchmarks powered by [JMH](https://openjdk.org/projects/code-tools/jmh/) are available in `src/jmh/java` to quantify injector hot paths such as singleton resolution, graph construction, and negative lookups.
+
+- Run the full suite with `./gradlew jmh`.
+- Benchmark results are published under `build/reports/jmh` alongside the raw `.json` output in `build/jmh/results` for further analysis.
+- Adjust benchmark parameters (warmup, measurement iterations, forks) via the `jmh { ... }` block in `build.gradle` as needed for deeper investigations.
+
 ### Documentation
 
 You can find the documentation at [infusedocs.fumaz.dev](https://infusedocs.fumaz.dev).
