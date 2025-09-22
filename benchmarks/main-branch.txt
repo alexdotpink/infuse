@@ -1,0 +1,5 @@
+Benchmark                                  Mode  Cnt     Score      Error  Units
+InjectorBenchmark.constructCompositeGraph  avgt    5   349.184 ±  173.087  ns/op
+InjectorBenchmark.provideCompositeGraph    avgt    5  3425.926 ± 1056.296  ns/op
+InjectorBenchmark.provideSingleton         avgt    5   369.391 ±  121.688  ns/op
+InjectorBenchmark.unresolvedBindingLookup  avgt    5   889.218 ±   75.963  ns/op

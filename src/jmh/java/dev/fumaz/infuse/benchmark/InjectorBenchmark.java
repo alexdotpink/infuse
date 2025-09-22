@@ -53,7 +53,11 @@ public class InjectorBenchmark {
 
     @Benchmark
     public void unresolvedBindingLookup(InjectorState state, Blackhole blackhole) {
-        blackhole.consume(state.injector.getProvider(UnboundType.class));
+        try {
+            blackhole.consume(state.injector.getProvider(UnboundType.class));
+        } catch (RuntimeException exception) {
+            blackhole.consume(exception);
+        }
     }
 
     private static class BenchmarkModule extends InfuseModule {
