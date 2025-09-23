@@ -391,13 +391,21 @@ public class InfuseInjector implements Injector {
     }
 
     @Override
-    public <T> T provide(@NotNull Class<T> type, @NotNull Context<?> context) {
+    public <T> @Nullable T provide(@NotNull Class<T> type, @NotNull Context<?> context) {
+        Annotation[] annotations = context.getAnnotations();
+        boolean optional = InjectionUtils.isOptional(annotations);
+        BindingQualifier qualifier = InjectionUtils.resolveQualifier(annotations);
+        return provideResolved(type, qualifier, optional, context);
+    }
+
+    private <T> @Nullable T provideResolved(@NotNull Class<T> type,
+                                            @NotNull BindingQualifier qualifier,
+                                            boolean optional,
+                                            @NotNull Context<?> context) {
         ResolutionScopeHandle ownerScope = resolutionScopes.enter(context.getObject());
         ProvisionFrame frame = null;
-        boolean optional = InjectionUtils.isOptional(context.getAnnotations());
 
         try {
-            BindingQualifier qualifier = InjectionUtils.resolveQualifier(context.getAnnotations());
             Object existing = resolutionScopes.lookup(type);
 
             if (existing != null) {
@@ -773,7 +781,7 @@ public class InfuseInjector implements Injector {
                         field.getName(), point.annotations());
 
                 try {
-                    Object value = provide(point.type(), fieldContext);
+                    Object value = provideResolved(point.type(), point.qualifier(), point.optional(), fieldContext);
 
                     if (value == null && point.optional()) {
                         if (point.primitive()) {
@@ -1449,7 +1457,7 @@ public class InfuseInjector implements Injector {
 
                 contexts[i] = context;
                 parameters[i] = new ConstructorParameter(parameterType, parameter.getName(), optional,
-                        direct, declaringType);
+                        direct, declaringType, qualifier);
             }
 
             return new ConstructorArgumentPlan(parameters, contexts);
@@ -1570,18 +1578,21 @@ public class InfuseInjector implements Injector {
         private final String name;
         private final Function<InfuseInjector, Object> direct;
         private final Class<?> declaringType;
+        private final BindingQualifier qualifier;
 
         private ConstructorParameter(Class<?> type,
                                      String name,
                                      boolean optional,
                                      @Nullable Function<InfuseInjector, Object> direct,
-                                     Class<?> declaringType) {
+                                     Class<?> declaringType,
+                                     BindingQualifier qualifier) {
             this.type = type;
             this.optional = optional;
             this.primitive = type.isPrimitive();
             this.name = name;
             this.direct = direct;
             this.declaringType = declaringType;
+            this.qualifier = qualifier;
         }
 
         private boolean supports(Object candidate) {
@@ -1609,7 +1620,7 @@ public class InfuseInjector implements Injector {
                 value = direct.apply(injector);
             } else {
                 Context<?> resolverContext = Objects.requireNonNull(context, "context");
-                value = injector.provide(type, resolverContext);
+                value = injector.provideResolved(type, qualifier, optional, resolverContext);
             }
 
             if (optional && value == null) {
@@ -1993,19 +2004,22 @@ public class InfuseInjector implements Injector {
         private final boolean primitive;
         private final boolean isStatic;
         private final Annotation[] annotations;
+        private final BindingQualifier qualifier;
 
         private FieldInjectionPoint(Field field,
                                     @Nullable VarHandle handle,
                                     boolean optional,
-                                    boolean primitive,
-                                    boolean isStatic,
-                                    Annotation[] annotations) {
+                                     boolean primitive,
+                                     boolean isStatic,
+                                     Annotation[] annotations,
+                                     BindingQualifier qualifier) {
             this.field = field;
             this.handle = handle;
             this.optional = optional;
             this.primitive = primitive;
             this.isStatic = isStatic;
             this.annotations = annotations == null || annotations.length == 0 ? NO_ANNOTATIONS : annotations;
+            this.qualifier = qualifier;
         }
 
         private static FieldInjectionPoint create(Field field) {
@@ -2013,6 +2027,7 @@ public class InfuseInjector implements Injector {
             boolean optional = InjectionUtils.isOptional(annotations);
             boolean primitive = field.getType().isPrimitive();
             boolean isStatic = Modifier.isStatic(field.getModifiers());
+            BindingQualifier qualifier = InjectionUtils.resolveQualifier(annotations);
             VarHandle handle = null;
 
             try {
@@ -2021,7 +2036,7 @@ public class InfuseInjector implements Injector {
             } catch (IllegalAccessException | RuntimeException ignored) {
             }
 
-            return new FieldInjectionPoint(field, handle, optional, primitive, isStatic, annotations);
+            return new FieldInjectionPoint(field, handle, optional, primitive, isStatic, annotations, qualifier);
         }
 
         private Field field() {
@@ -2042,6 +2057,10 @@ public class InfuseInjector implements Injector {
 
         private Annotation[] annotations() {
             return annotations;
+        }
+
+        private BindingQualifier qualifier() {
+            return qualifier;
         }
 
         private void set(Object target, Object value) throws Throwable {
@@ -2151,19 +2170,22 @@ public class InfuseInjector implements Injector {
             private final boolean optional;
             private final boolean primitive;
             private final Class<?> declaringType;
+            private final BindingQualifier qualifier;
 
             private MethodParameter(Class<?> type,
                                     String name,
                                     Annotation[] annotations,
                                     boolean optional,
                                     boolean primitive,
-                                    Class<?> declaringType) {
+                                    Class<?> declaringType,
+                                    BindingQualifier qualifier) {
                 this.type = type;
                 this.name = name;
                 this.annotations = annotations == null || annotations.length == 0 ? NO_ANNOTATIONS : annotations;
                 this.optional = optional;
                 this.primitive = primitive;
                 this.declaringType = declaringType;
+                this.qualifier = qualifier;
             }
 
             private static MethodParameter[] createAll(Method method) {
@@ -2182,6 +2204,7 @@ public class InfuseInjector implements Injector {
                     Annotation[] annotations = parameter.getAnnotations();
                     boolean optional = InjectionUtils.isOptional(annotations);
                     boolean primitive = parameterType.isPrimitive();
+                    BindingQualifier qualifier = InjectionUtils.resolveQualifier(annotations);
 
                     if (optional && primitive) {
                         throw new IllegalArgumentException("Optional method parameter " + parameter.getName()
@@ -2190,7 +2213,7 @@ public class InfuseInjector implements Injector {
                     }
 
                     parameters[i] = new MethodParameter(parameterType, parameter.getName(), annotations, optional,
-                            primitive, declaringType);
+                            primitive, declaringType, qualifier);
                 }
 
                 return parameters;
@@ -2203,7 +2226,7 @@ public class InfuseInjector implements Injector {
                         annotations);
 
                 try {
-                    Object value = injector.provide(type, parameterContext);
+                    Object value = injector.provideResolved(type, qualifier, optional, parameterContext);
 
                     if (optional && value == null) {
                         return null;
